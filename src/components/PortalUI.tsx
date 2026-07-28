@@ -1,0 +1,380 @@
+import React, { useState, useRef } from 'react';
+import { useDisputes, type DisputeFile } from '../context/DisputeContext';
+import { 
+  LayoutDashboard, CreditCard, PlusCircle, History, Bell, Settings, 
+  Menu, X, Upload, FileText, Trash2, Eye, CheckCircle2, Sparkles, Plus, LogOut
+} from 'lucide-react';
+import { motion } from 'framer-motion';
+
+// --- CORE UI CONTROLS ---
+
+export const Card: React.FC<{ hoverable?: boolean; premium?: boolean; children: React.ReactNode; className?: string; onClick?: () => void }> = 
+({ hoverable = false, premium = false, children, className = '', onClick }) => (
+  <div
+    onClick={onClick}
+    className={`glass-panel rounded-2xl p-6 transition-all duration-300 relative overflow-hidden ${
+      hoverable ? 'hover:border-amex-blue/35 hover:shadow-[0_10px_35px_rgba(1,111,208,0.12)] hover:-translate-y-1 cursor-pointer' : ''
+    } ${
+      premium ? 'border-t-3 border-t-[#D4AF37] after:absolute after:top-0 after:left-0 after:right-0 after:h-[1px] after:bg-gradient-to-r after:from-transparent after:via-[#F3E5AB]/40 after:to-transparent' : ''
+    } ${className}`}
+  >
+    {children}
+  </div>
+);
+
+export const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'outline' | 'danger' | 'ghost'; size?: 'sm' | 'md' | 'lg' }> = 
+({ variant = 'primary', size = 'md', children, className = '', ...props }) => {
+  const base = 'inline-flex items-center justify-center font-bold rounded-xl transition-all duration-200 focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer active:scale-[0.98]';
+  const variants = {
+    primary: 'bg-gradient-to-r from-[#016FD0] to-[#005bb0] text-white border border-transparent shadow-[0_4px_15px_rgba(1,111,208,0.25)] hover:shadow-[0_6px_22px_rgba(1,111,208,0.4)] hover:brightness-110',
+    secondary: 'bg-gradient-to-r from-[#DFBA73] to-[#C5A059] text-slate-950 border border-transparent shadow-[0_4px_15px_rgba(197,160,89,0.2)] hover:shadow-[0_6px_22px_rgba(197,160,89,0.35)] hover:brightness-110',
+    outline: 'border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10 hover:border-white/20 hover:text-white',
+    danger: 'bg-gradient-to-r from-[#EF4444] to-[#B91C1C] text-white border border-transparent shadow-[0_4px_15px_rgba(239,68,68,0.2)] hover:shadow-[0_6px_22px_rgba(239,68,68,0.35)] hover:brightness-110',
+    ghost: 'text-slate-300 hover:bg-white/5 hover:text-white',
+  };
+  const sizes = { 
+    sm: 'px-3.5 py-2 text-xs', 
+    md: 'px-4.5 py-2.5 text-xs', 
+    lg: 'px-5 py-3 text-sm' 
+  };
+  return <button className={`${base} ${variants[variant]} ${sizes[size]} ${className}`} {...props}>{children}</button>;
+};
+
+export const StatusChip: React.FC<{ status: string }> = ({ status }) => {
+  const s = status.toLowerCase();
+  let bg = 'bg-slate-800/50 text-slate-300 border-slate-700/50';
+  let dot = 'bg-slate-400 shadow-[0_0_8px_rgba(148,163,184,0.5)]';
+  
+  if (s.includes('approved') || s === 'resolved') { 
+    bg = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'; 
+    dot = 'bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.6)]'; 
+  } else if (s.includes('reject')) { 
+    bg = 'bg-rose-500/10 text-rose-400 border-rose-500/20'; 
+    dot = 'bg-rose-400 shadow-[0_0_8px_rgba(239,68,68,0.6)]'; 
+  } else if (s.includes('gathering') || s.includes('response') || s.includes('review') || s === 'submitted') { 
+    bg = 'bg-sky-500/10 text-sky-400 border-sky-500/20'; 
+    dot = 'bg-[#38BDF8] shadow-[0_0_8px_rgba(56,189,248,0.6)]'; 
+  } else if (s.includes('appealed') || s.includes('warning')) { 
+    bg = 'bg-amber-500/10 text-amber-400 border-amber-500/20'; 
+    dot = 'bg-amber-400 shadow-[0_0_8px_rgba(245,166,35,0.6)]'; 
+  }
+  
+  return (
+    <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-extrabold border uppercase tracking-wider ${bg}`}>
+      <span className={`w-1.5 h-1.5 rounded-full mr-2 ${dot}`} />
+      {status}
+    </span>
+  );
+};
+
+export const ProgressRing: React.FC<{ percentage: number; size?: number }> = ({ percentage, size = 64 }) => {
+  const radius = (size - 6) / 2;
+  const circumference = radius * 2 * Math.PI;
+  const offset = circumference - (percentage / 100) * circumference;
+  
+  // Custom glowing stroke colors
+  const strokeColor = percentage < 50 
+    ? 'stroke-[#EF4444]' 
+    : percentage < 80 
+      ? 'stroke-[#F5A623]' 
+      : 'stroke-[#10B981]';
+  const filterId = `glow-${percentage}`;
+      
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <defs>
+          <filter id={filterId} x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="2" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+        </defs>
+        <circle className="stroke-white/5 fill-none" strokeWidth={5} r={radius} cx={size/2} cy={size/2} />
+        <motion.circle 
+          className={`${strokeColor} fill-none`} 
+          strokeWidth={5} 
+          strokeLinecap="round" 
+          strokeDasharray={circumference}
+          filter={`url(#${filterId})`}
+          initial={{ strokeDashoffset: circumference }} 
+          animate={{ strokeDashoffset: offset }} 
+          transition={{ duration: 0.8, ease: [0.4, 0, 0.2, 1] }}
+          r={radius} 
+          cx={size/2} 
+          cy={size/2} 
+        />
+      </svg>
+      <span className="absolute text-[11px] font-black text-slate-100">{percentage}%</span>
+    </div>
+  );
+};
+
+// --- EVIDENCE UPLOAD MODULE ---
+
+interface UploadZoneProps {
+  files: DisputeFile[];
+  onAddFiles: (newFiles: Omit<DisputeFile, 'id'>[]) => void;
+  onRemoveFile: (id: string) => void;
+}
+
+export const UploadZone: React.FC<UploadZoneProps> = ({ files, onAddFiles, onRemoveFile }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previewFile, setPreviewFile] = useState<DisputeFile | null>(null);
+
+  const checklist = [
+    { id: 'receipt', label: 'Receipt uploaded', status: files.some(f => f.category === 'Receipts') },
+    { id: 'proof', label: 'Transaction proof found', status: files.some(f => ['Invoices', 'Order Confirmation'].includes(f.category)) },
+    { id: 'chat', label: 'Merchant communication log', status: files.some(f => f.category === 'Chat Logs') },
+  ];
+
+  const corePassed = checklist.filter(c => c.status).length;
+  const completenessScore = corePassed === 0 ? 20 : corePassed === 1 ? 55 : corePassed === 2 ? 80 : 100;
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      onAddFiles(Array.from(e.target.files).map(f => ({
+        name: f.name,
+        size: `${(f.size / 1024).toFixed(0)} KB`,
+        category: f.name.toLowerCase().includes('receipt') ? 'Receipts' : f.name.toLowerCase().includes('chat') ? 'Chat Logs' : 'Invoices'
+      })));
+    }
+  };
+
+  const addSampleFile = (type: 'receipt' | 'chat' | 'invoice') => {
+    const samples = {
+      receipt: { name: 'store_receipt_7231.png', size: '380 KB', category: 'Receipts' },
+      chat: { name: 'merchant_chat_log.pdf', size: '1.2 MB', category: 'Chat Logs' },
+      invoice: { name: 'invoice_2026_098.pdf', size: '540 KB', category: 'Invoices' }
+    };
+    onAddFiles([samples[type]]);
+  };
+
+  return (
+    <div className="space-y-6 text-left">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="md:col-span-2 space-y-4">
+          <div 
+            onClick={() => fileInputRef.current?.click()}
+            className="border-2 border-dashed border-white/10 hover:border-[#016FD0]/40 rounded-2xl p-8 text-center cursor-pointer bg-white/[0.02] hover:bg-white/[0.04] transition-all group"
+          >
+            <input type="file" ref={fileInputRef} onChange={handleFileChange} multiple className="hidden" />
+            <Upload className="w-9 h-9 mx-auto text-[#016FD0] mb-3 transition-transform group-hover:-translate-y-1" />
+            <p className="text-xs font-bold text-slate-200">Click or drag files here to upload</p>
+            <p className="text-[10px] text-slate-500 mt-1">Supports PDF, PNG, JPG, DOCX (Max 10MB)</p>
+          </div>
+
+          <div className="bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+            <span className="text-[9px] uppercase font-black text-slate-400 block mb-2.5 tracking-widest">Demo File Shortcut</span>
+            <div className="flex flex-wrap gap-2">
+              {(['receipt', 'chat', 'invoice'] as const).map(type => (
+                <button key={type} type="button" onClick={() => addSampleFile(type)}
+                  className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[10px] font-bold text-slate-300 hover:border-[#016FD0] hover:text-[#016FD0] hover:bg-white/10 transition-all flex items-center gap-1.5 cursor-pointer">
+                  <Plus className="w-3.5 h-3.5" /> Add {type.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {files.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {files.map(file => (
+                <div key={file.id} className="bg-white/[0.03] border border-white/5 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <FileText className="w-4 h-4 text-[#016FD0] shrink-0" />
+                    <div className="overflow-hidden">
+                      <p className="text-xs font-bold text-slate-200 truncate">{file.name}</p>
+                      <p className="text-[9px] text-slate-400">{file.size} • {file.category}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button type="button" onClick={() => setPreviewFile(file)} className="p-1.5 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg cursor-pointer"><Eye className="w-4 h-4" /></button>
+                    <button type="button" onClick={() => onRemoveFile(file.id)} className="p-1.5 text-slate-400 hover:text-[#EF4444] hover:bg-rose-500/10 rounded-lg cursor-pointer"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="glass-panel border border-white/10 rounded-2xl p-6 shadow-amex space-y-5">
+          <div className="flex items-center gap-2 text-xs font-bold text-[#016FD0]"><Sparkles className="w-4.5 h-4.5" /><span className="text-gradient-blue font-extrabold uppercase tracking-wide">AI Evidence Audit</span></div>
+          <div className="flex flex-col items-center py-3 border-b border-white/5">
+            <ProgressRing percentage={completenessScore} size={80} />
+            <span className="text-xs font-extrabold text-slate-200 mt-3">Evidence Quality</span>
+          </div>
+          <div className="space-y-3">
+            {checklist.map(item => (
+              <div key={item.id} className="flex items-center gap-2.5 text-xs">
+                <CheckCircle2 className={`w-4 h-4 shrink-0 transition-colors ${item.status ? 'text-[#10B981]' : 'text-slate-700'}`} />
+                <span className={item.status ? 'text-slate-500 line-through' : 'text-slate-300 font-semibold'}>{item.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {previewFile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-4">
+          <div className="glass-panel border border-white/10 rounded-2xl max-w-sm w-full p-6 relative shadow-2xl">
+            <button className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg cursor-pointer" onClick={() => setPreviewFile(null)}><X className="w-4 h-4" /></button>
+            <h4 className="text-xs font-black text-slate-100 mb-1">{previewFile.name}</h4>
+            <p className="text-[10px] text-slate-400 mb-4">{previewFile.category}</p>
+            <div className="bg-slate-900/50 border border-white/5 rounded-xl p-4 text-center font-mono text-[9px] text-slate-500 h-32 flex items-center justify-center">
+              [SECURE AMEX ENCRYPTED DOCUMENT PREVIEW]
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- APP LAYOUT (HEADER, SIDEBAR, UTILITIES) ---
+
+export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { currentPage, setCurrentPage, notifications, logout } = useDisputes();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  const navItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'transactions', label: 'Transactions', icon: CreditCard },
+    { id: 'raise-dispute', label: 'Raise Dispute', icon: PlusCircle },
+    { id: 'my-disputes', label: 'My Disputes', icon: History },
+    { id: 'notifications', label: 'Notifications', icon: Bell, badge: unreadCount > 0 ? unreadCount : undefined },
+    { id: 'settings', label: 'Settings', icon: Settings },
+  ];
+
+  return (
+    <div className="min-h-screen bg-[#020617] flex flex-col font-sans text-slate-200">
+      {/* Premium Glass Header */}
+      <header className="bg-slate-950/50 backdrop-blur-md border-b border-white/5 sticky top-0 z-40 px-4 sm:px-6 py-3.5 flex items-center justify-between shadow-lg">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setMobileMenuOpen(true)} className="md:hidden p-2 text-slate-300 hover:text-white hover:bg-white/5 rounded-lg cursor-pointer"><Menu className="w-5.5 h-5.5" /></button>
+          
+          <div onClick={() => setCurrentPage('dashboard')} className="flex items-center gap-3 cursor-pointer select-none group">
+            {/* Custom Glowing Amex Logo */}
+            <div className="w-9 h-9 bg-gradient-to-br from-[#016FD0] to-[#002D62] flex flex-col justify-between p-1.5 rounded border border-white/10 shadow-[0_0_10px_rgba(1,111,208,0.25)] group-hover:shadow-[0_0_15px_rgba(1,111,208,0.4)] transition-all">
+              <span className="text-[5px] font-black text-white leading-none tracking-widest">AMER</span>
+              <span className="text-[5px] font-black text-white leading-none text-right tracking-widest self-end">EXPR</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="hidden sm:inline text-xs font-black text-white tracking-[0.15em] uppercase">AMERICAN EXPRESS</span>
+              <span className="hidden sm:inline text-[9px] font-bold text-slate-400 leading-none">Dispute Resolution Portal</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={logout}
+            className="px-3 py-1.5 bg-white/5 border border-white/10 hover:bg-rose-500/10 hover:border-rose-500/20 text-[10px] font-bold text-slate-300 hover:text-rose-400 rounded-lg cursor-pointer transition-all flex items-center gap-1.5"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Login Page</span>
+          </button>
+          <button className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-full cursor-pointer relative" onClick={() => setCurrentPage('notifications')}>
+            <Bell className="w-5 h-5" />
+            {unreadCount > 0 && <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-[#EF4444] rounded-full ring-2 ring-slate-950 animate-pulse" />}
+          </button>
+          <div className="flex items-center gap-2.5 border-l border-white/10 pl-4">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#DFBA73] to-[#C5A059] p-[1px] shadow-[0_0_8px_rgba(197,160,89,0.25)]">
+              <div className="w-full h-full rounded-full bg-slate-950 flex items-center justify-center font-black text-xs text-[#DFBA73]">DK</div>
+            </div>
+            <span className="hidden md:inline text-xs font-bold text-slate-200">David K.</span>
+          </div>
+        </div>
+      </header>
+
+      <div className="flex-1 flex">
+        {/* Desktop Sidebar with Glass Panel styling */}
+        <aside className="hidden md:flex flex-col w-64 bg-slate-950/20 border-r border-white/5 p-4 shrink-0 justify-between">
+          <nav className="space-y-1">
+            {navItems.map(item => {
+              const Icon = item.icon;
+              const active = currentPage === item.id || (item.id === 'my-disputes' && currentPage === 'appeal');
+              return (
+                <button key={item.id} onClick={() => setCurrentPage(item.id)}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${
+                    active 
+                      ? 'bg-gradient-to-r from-[#016FD0]/15 to-transparent text-[#38BDF8] border-l-3 border-l-[#016FD0] pl-2.5 shadow-[inset_4px_0_12px_rgba(1,111,208,0.08)]' 
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                  }`}>
+                  <div className="flex items-center gap-2.5">
+                    <Icon className={`w-4 h-4 transition-colors ${active ? 'text-[#38BDF8]' : 'text-slate-400'}`} />
+                    <span>{item.label}</span>
+                  </div>
+                  {item.badge && <span className="bg-[#EF4444] text-white text-[8px] px-1.5 py-0.5 rounded-full font-black tracking-wide shadow-[0_0_8px_rgba(239,68,68,0.4)]">{item.badge}</span>}
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* Authentic Amex Platinum Card Mockup */}
+          <div className="relative overflow-hidden bg-gradient-to-br from-[#F1F5F9] via-[#E2E8F0] to-[#94A3B8] text-slate-800 p-5 rounded-2xl shadow-[0_8px_25px_rgba(0,0,0,0.3)] space-y-5 border border-white/40 group cursor-pointer transition-transform duration-300 hover:scale-[1.03]">
+            {/* Glossy overlay sheen */}
+            <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite_linear] pointer-events-none" />
+            <div className="flex justify-between items-center">
+              <span className="text-[8px] tracking-[0.2em] font-extrabold text-slate-700">PLATINUM</span>
+              <span className="text-[10px] font-serif font-black italic text-slate-900 tracking-tighter">AMEX</span>
+            </div>
+            {/* Card Chip representation */}
+            <div className="w-8 h-6 rounded-md bg-gradient-to-r from-[#DFBA73] to-[#9E7D3B] border border-[#C5A059] opacity-90 p-0.5 flex flex-col justify-between">
+              <div className="grid grid-cols-3 gap-0.5 h-full opacity-60">
+                <div className="border-r border-slate-950/20" />
+                <div className="border-r border-slate-950/20" />
+                <div />
+              </div>
+            </div>
+            <div className="flex justify-between items-end">
+              <span className="text-xs font-mono font-bold tracking-wider text-slate-700">•••• 91008</span>
+              <span className="text-[8px] font-bold text-slate-600">MEMBER SINCE 18</span>
+            </div>
+          </div>
+        </aside>
+
+        {/* Mobile Menu Drawer */}
+        {mobileMenuOpen && (
+          <div className="fixed inset-0 z-50 md:hidden flex">
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)} />
+            <div className="relative flex flex-col w-60 bg-slate-900/95 border-r border-white/10 h-full p-5 shadow-2xl z-10">
+              <div className="flex justify-between items-center mb-8 pb-3 border-b border-white/5">
+                <span className="text-xs font-black tracking-wide text-white uppercase">American Express</span>
+                <button onClick={() => setMobileMenuOpen(false)} className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer"><X className="w-5 h-5" /></button>
+              </div>
+              <nav className="space-y-1.5 flex-1">
+                {navItems.map(item => {
+                  const Icon = item.icon;
+                  const active = currentPage === item.id;
+                  return (
+                    <button key={item.id} onClick={() => { setCurrentPage(item.id); setMobileMenuOpen(false); }}
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold cursor-pointer ${
+                        active 
+                          ? 'bg-[#016FD0]/20 text-[#38BDF8] border-l-3 border-l-[#016FD0] pl-2' 
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}>
+                      <div className="flex items-center gap-2.5"><Icon className="w-4 h-4" /><span>{item.label}</span></div>
+                    </button>
+                  );
+                })}
+              </nav>
+              <div className="mt-auto border-t border-white/5 pt-4">
+                <button 
+                  onClick={() => { logout(); setMobileMenuOpen(false); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 cursor-pointer transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <main className="flex-1 px-4 sm:px-8 py-8 max-w-6xl mx-auto w-full">
+          {children}
+        </main>
+      </div>
+    </div>
+  );
+};
