@@ -84,7 +84,7 @@ const initialTransactions: Transaction[] = [
 const initialDisputes: Dispute[] = [
   {
     id: 'AMEX-2026-00451',
-    transaction: initialTransactions[5], // Best Buy
+    transaction: initialTransactions[6], // Best Buy
     reason: 'Unauthorized Transaction',
     mappedCode: '4554',
     status: 'Merchant Response',
@@ -99,7 +99,7 @@ const initialDisputes: Dispute[] = [
   },
   {
     id: 'AMEX-2026-00210',
-    transaction: initialTransactions[6], // Target
+    transaction: initialTransactions[7], // Target
     reason: 'Defective Product',
     mappedCode: '4555',
     status: 'Rejected',
@@ -179,15 +179,23 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
       expectedResolution: '5 Business Days',
       customerName: 'David K.'
     };
-    const investigation = runInvestigationWorkflow(baseDispute, transactions);
+    let investigation: InvestigationResult | undefined;
+    let investigationStatus: Dispute['status'] = 'AI Ready';
+    let auditTrail: AuditEvent[] = [createAuditEvent(caseId, 'CASE_CREATED', 'CUSTOMER', { merchant: disputeData.transaction.merchant, amount: disputeData.transaction.amount })];
+
+    try {
+      investigation = runInvestigationWorkflow(baseDispute, transactions);
+      auditTrail = [...auditTrail, ...investigation.auditTrail];
+    } catch {
+      investigationStatus = 'Manual Review';
+      auditTrail = [...auditTrail, createAuditEvent(caseId, 'INVESTIGATION_STARTED', 'AI', { failedSafely: true })];
+    }
+
     const newDispute: Dispute = {
       ...baseDispute,
-      status: 'AI Ready',
+      status: investigationStatus,
       investigation,
-      auditTrail: [
-        createAuditEvent(caseId, 'CASE_CREATED', 'CUSTOMER', { merchant: disputeData.transaction.merchant, amount: disputeData.transaction.amount }),
-        ...investigation.auditTrail
-      ]
+      auditTrail
     };
 
     setDisputes(prev => [newDispute, ...prev]);

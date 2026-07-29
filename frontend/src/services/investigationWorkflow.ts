@@ -61,6 +61,12 @@ export interface AuditEvent {
 
 export interface InvestigationResult {
   caseId: string;
+  disputeId: string;
+  transactionId: string;
+  customerId: string;
+  merchant: string;
+  amount: number;
+  customerStatement: string;
   classification: CaseClassification;
   reason: CaseClassification;
   riskLevel: RiskLevel;
@@ -74,6 +80,8 @@ export interface InvestigationResult {
   evidenceFacts: EvidenceFact[];
   workflowEvents: WorkflowEvent[];
   auditTrail: AuditEvent[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 const now = () => new Date().toISOString();
@@ -226,13 +234,20 @@ const recommend = (
 
 export const runInvestigationWorkflow = (dispute: Dispute, transactions: Transaction[]): InvestigationResult => {
   const customerStatement = String(dispute.questionnaire.additionalInfo || '');
+  const createdAt = now();
   const classification = classifyCase(dispute.reason, customerStatement);
   const evidenceFacts = extractEvidenceFacts(dispute.evidenceFiles);
   const risk = assessRisk(dispute, transactions, classification.classification, classification.reason, evidenceFacts);
   const recommendation = recommend(classification.classification, classification.reason, risk.confidenceScore, risk.riskLevel, risk.signals, evidenceFacts);
 
   return {
-    caseId: dispute.id,
+    caseId: `CASE-${dispute.id}`,
+    disputeId: dispute.id,
+    transactionId: dispute.transaction.id,
+    customerId: 'CUST-1008',
+    merchant: dispute.transaction.merchant,
+    amount: dispute.transaction.amount,
+    customerStatement,
     classification: classification.classification,
     reason: classification.reason,
     riskLevel: risk.riskLevel,
@@ -245,9 +260,8 @@ export const runInvestigationWorkflow = (dispute: Dispute, transactions: Transac
     status: 'AI_READY',
     evidenceFacts,
     workflowEvents: [
-      event('intake', 'Transaction retrieved'),
-      event('context', 'Context analyzed'),
-      event('evidence', 'Evidence analyzed'),
+      event('received', 'Dispute received'),
+      event('transaction', 'Transaction analyzed'),
       event('classification', 'Case classified'),
       event('risk', 'Risk assessed'),
       event('recommendation', 'Recommendation generated')
@@ -259,7 +273,9 @@ export const runInvestigationWorkflow = (dispute: Dispute, transactions: Transac
       audit(dispute.id, 'CASE_CLASSIFIED', 'AI', { classification: classification.classification, reason: classification.reason }),
       audit(dispute.id, 'RISK_ASSESSED', 'AI', { riskLevel: risk.riskLevel, confidenceScore: risk.confidenceScore }),
       audit(dispute.id, 'RECOMMENDATION_GENERATED', 'AI', { recommendedAction: recommendation.recommendedAction })
-    ]
+    ],
+    createdAt,
+    updatedAt: createdAt
   };
 };
 

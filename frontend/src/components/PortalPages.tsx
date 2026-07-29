@@ -264,7 +264,7 @@ export const Transactions: React.FC = () => {
 // ==========================================
 
 export const DisputeWizard: React.FC = () => {
-  const { selectedTransactionForDispute, setSelectedTransactionForDispute, setCurrentPage, createDispute, setActiveDisputeId } = useDisputes();
+  const { selectedTransactionForDispute, setSelectedTransactionForDispute, setCurrentPage, createDispute, setActiveDisputeId, disputes } = useDisputes();
   const [step, setStep] = useState(1);
   const [submittedCaseId, setSubmittedCaseId] = useState<string | null>(null);
 
@@ -318,6 +318,14 @@ export const DisputeWizard: React.FC = () => {
       setCurrentPage('my-disputes');
     }
   };
+  const submittedDispute = submittedCaseId ? disputes.find(d => d.id === submittedCaseId) : null;
+  const publicInvestigationSteps = submittedDispute?.investigation?.workflowEvents || [
+    { id: 'received', label: 'Dispute received', status: 'complete' as const, timestamp: '' },
+    { id: 'transaction', label: 'Transaction analyzed', status: 'complete' as const, timestamp: '' },
+    { id: 'classification', label: 'Case classified', status: 'complete' as const, timestamp: '' },
+    { id: 'risk', label: 'Risk assessed', status: 'complete' as const, timestamp: '' },
+    { id: 'recommendation', label: 'Recommendation generated', status: 'complete' as const, timestamp: '' }
+  ];
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 text-left">
@@ -332,23 +340,39 @@ export const DisputeWizard: React.FC = () => {
       )}
 
       {submittedCaseId ? (
-        <Card className="text-center max-w-md mx-auto py-8 p-6 space-y-6">
+        <Card className="max-w-xl mx-auto py-8 p-6 space-y-6">
           <div className="w-16 h-16 bg-[#10B981]/15 text-[#10B981] rounded-full flex items-center justify-center mx-auto border border-[#10B981]/30 ">
             <CheckCircle2 className="w-10 h-10" />
           </div>
-          <div>
+          <div className="text-center">
             <h2 className="text-lg font-bold text-slate-950 uppercase tracking-wide">Dispute Lodged Successfully</h2>
-            <p className="text-xs text-slate-500 mt-2 leading-relaxed font-medium">American Express temporary billing credits are now active on your statement and protected under billing policy.</p>
+            <p className="text-xs text-slate-500 mt-2 leading-relaxed font-medium">Resolve AI is investigating your dispute. Your case has been received and is moving into Amex review.</p>
           </div>
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-5 grid grid-cols-2 text-left gap-4">
             <div>
               <span className="text-[9px] uppercase font-black text-slate-500 tracking-wider">Case ID</span>
-              <p className="text-xs font-mono font-black text-[#38BDF8] mt-0.5">{submittedCaseId}</p>
+              <p className="text-xs font-mono font-black text-[#005eb1] mt-0.5">{submittedDispute?.investigation?.caseId || `CASE-${submittedCaseId}`}</p>
             </div>
             <div>
-              <span className="text-[9px] uppercase font-black text-slate-500 tracking-wider">SLA Window</span>
-              <p className="text-xs font-bold text-[#10B981] mt-0.5">5 Business Days</p>
+              <span className="text-[9px] uppercase font-black text-slate-500 tracking-wider">Status</span>
+              <p className="text-xs font-bold text-[#10B981] mt-0.5">{submittedDispute?.status || 'Manual Review'}</p>
             </div>
+            <div>
+              <span className="text-[9px] uppercase font-black text-slate-500 tracking-wider">Classification</span>
+              <p className="text-xs font-bold text-slate-800 mt-0.5">{submittedDispute?.investigation?.classification.replaceAll('_', ' ') || 'Under Review'}</p>
+            </div>
+            <div>
+              <span className="text-[9px] uppercase font-black text-slate-500 tracking-wider">Current Stage</span>
+              <p className="text-xs font-bold text-slate-800 mt-0.5">{submittedDispute?.status === 'AI Ready' ? 'Amex Review' : 'Under Review'}</p>
+            </div>
+          </div>
+          <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+            {publicInvestigationSteps.map(item => (
+              <div key={item.id} className="flex items-center gap-3 text-xs font-semibold text-slate-700">
+                <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
+                <span>{item.label}</span>
+              </div>
+            ))}
           </div>
           <div className="space-y-2.5">
             <Button variant="primary" className="w-full text-xs font-bold py-3" onClick={handleTrack}>Track Dispute</Button>
@@ -519,13 +543,13 @@ export const DisputeTracking: React.FC = () => {
 
   const stages = [
     { title: 'Submitted', desc: 'Case received and temporary dispute credit posted.' },
-    { title: 'Evidence Gathering', desc: 'Evidence reviewed by case review team.' },
-    { title: 'Merchant Response', desc: 'Awaiting formal response from the billing office.' },
-    { title: 'Under Review', desc: 'Senior AMEX auditor checking files.' },
+    { title: 'AI Investigation', desc: 'Transaction, claim reason, and evidence were reviewed.' },
+    { title: 'Evidence Review', desc: 'Supporting details are being checked.' },
+    { title: 'Amex Review', desc: 'An Amex reviewer is preparing the next case update.' },
     { title: 'Decision', desc: 'Ruling determined, case updates finalized.' }
   ];
 
-  const currentStageIndex = dispute ? (dispute.status === 'Rejected' ? 4 : dispute.status === 'Merchant Response' ? 2 : dispute.status === 'Resolved' ? 4 : 1) : 0;
+  const currentStageIndex = dispute ? (['Rejected', 'Resolved'].includes(dispute.status) ? 4 : dispute.status === 'AI Ready' ? 3 : dispute.status === 'Merchant Response' ? 2 : 1) : 0;
 
   return (
     <div className="space-y-6 text-left">
@@ -568,6 +592,9 @@ export const DisputeTracking: React.FC = () => {
                   <StatusChip status={dispute.status} />
                 </div>
                 <h3 className="text-sm font-bold text-slate-950 mt-1.5">{dispute.transaction.merchant} — ${dispute.transaction.amount.toFixed(2)}</h3>
+                {dispute.investigation && (
+                  <p className="text-[11px] text-slate-500 mt-1">Case {dispute.investigation.caseId} | {dispute.investigation.classification.replaceAll('_', ' ')}</p>
+                )}
               </div>
               {dispute.status === 'Rejected' && (
                 <Button variant="danger" size="sm" onClick={() => setCurrentPage('appeal')} className="text-xs font-bold gap-1.5 shrink-0"><Scale className="w-3.5 h-3.5" /> Appeal Case</Button>
