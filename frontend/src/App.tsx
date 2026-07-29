@@ -8,7 +8,9 @@ import {
   DisputeTracking, 
   Notifications, 
   Appeal, 
-  Settings 
+  Settings,
+  InvestigatorDashboard,
+  InvestigationWorkspace
 } from './components/PortalPages';
 import { Login } from './components/Login';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -49,6 +51,10 @@ const AppContent: React.FC = () => {
         return <Appeal />;
       case 'settings':
         return <Settings />;
+      case 'investigator':
+        return <InvestigatorDashboard />;
+      case 'investigator-case':
+        return <InvestigationWorkspace />;
       default:
         return <Dashboard />;
     }

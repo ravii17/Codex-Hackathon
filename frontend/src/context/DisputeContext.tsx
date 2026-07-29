@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, type ReactNode } from 'react';
+import { createAuditEvent, runInvestigationWorkflow, type AuditEvent, type InvestigationResult } from '../services/investigationWorkflow';
 
 export interface Transaction {
   id: string;
@@ -23,7 +24,7 @@ export interface Dispute {
   transaction: Transaction;
   reason: string;
   mappedCode: string;
-  status: 'Submitted' | 'Evidence Gathering' | 'Merchant Response' | 'Under Review' | 'Decision' | 'Resolved' | 'Rejected' | 'Appealed';
+  status: 'Submitted' | 'AI Investigating' | 'AI Ready' | 'Manual Review' | 'Evidence Gathering' | 'Merchant Response' | 'Under Review' | 'More Info Required' | 'Escalated' | 'Decision' | 'Resolved' | 'Rejected' | 'Appealed';
   merchantCountdown?: number;
   merchantRequirements?: string[];
   evidenceReviewed?: string[];
@@ -33,6 +34,9 @@ export interface Dispute {
   evidenceFiles: DisputeFile[];
   completenessScore: number;
   decisionExplanation?: string | null;
+  customerName?: string;
+  investigation?: InvestigationResult;
+  auditTrail?: AuditEvent[];
 }
 
 export interface Notification {
@@ -57,6 +61,7 @@ interface DisputeContextType {
   setSelectedTransactionForDispute: (tx: Transaction | null) => void;
   createDispute: (disputeData: Omit<Dispute, 'id' | 'submittedAt' | 'expectedResolution'>) => string;
   submitAppeal: (id: string, explanation: string, files: { name: string; size: string }[]) => void;
+  investigatorAction: (id: string, action: 'approve' | 'request-info' | 'escalate' | 'override', reason?: string) => void;
   markNotificationAsRead: (id: string) => void;
   markAllNotificationsAsRead: () => void;
   isAuthenticated: boolean;
@@ -66,6 +71,7 @@ interface DisputeContextType {
 }
 
 const initialTransactions: Transaction[] = [
+  { id: 'TX-1000', merchant: 'Luxe Hotel', amount: 1200.00, date: '2026-07-25', category: 'Travel', status: 'Posted', disputeEligible: true },
   { id: 'TX-1001', merchant: 'Delta Air Lines', amount: 654.20, date: '2026-07-24', category: 'Travel', status: 'Posted', disputeEligible: true },
   { id: 'TX-1002', merchant: 'Amazon.com', amount: 129.99, date: '2026-07-23', category: 'Shopping', status: 'Posted', disputeEligible: true },
   { id: 'TX-1003', merchant: 'Apple Store', amount: 1299.00, date: '2026-07-20', category: 'Electronics', status: 'Posted', disputeEligible: true },
@@ -124,7 +130,18 @@ const hasSavedSession = () => {
 export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [currentPage, setCurrentPage] = useState<string>('dashboard');
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
-  const [disputes, setDisputes] = useState<Dispute[]>(initialDisputes);
+  const [disputes, setDisputes] = useState<Dispute[]>(() => initialDisputes.map(dispute => {
+    const investigation = runInvestigationWorkflow(dispute, initialTransactions);
+    return {
+      ...dispute,
+      status: dispute.status === 'Rejected' ? dispute.status : 'AI Ready',
+      investigation,
+      auditTrail: [
+        createAuditEvent(dispute.id, 'CASE_CREATED', 'CUSTOMER', { merchant: dispute.transaction.merchant, amount: dispute.transaction.amount }),
+        ...investigation.auditTrail
+      ]
+    };
+  }));
   const [notifications, setNotifications] = useState<Notification[]>(initialNotifications);
   const [activeDisputeId, setActiveDisputeId] = useState<string | null>(null);
   const [selectedTransactionForDispute, setSelectedTransactionForDispute] = useState<Transaction | null>(null);
@@ -154,11 +171,23 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
     const caseId = `AMEX-2026-00${String(nextNum).padStart(3, '0')}`;
     const today = new Date().toISOString().split('T')[0];
 
-    const newDispute: Dispute = {
+    const baseDispute: Dispute = {
       ...disputeData,
       id: caseId,
+      status: 'AI Investigating',
       submittedAt: today,
       expectedResolution: '5 Business Days',
+      customerName: 'David K.'
+    };
+    const investigation = runInvestigationWorkflow(baseDispute, transactions);
+    const newDispute: Dispute = {
+      ...baseDispute,
+      status: 'AI Ready',
+      investigation,
+      auditTrail: [
+        createAuditEvent(caseId, 'CASE_CREATED', 'CUSTOMER', { merchant: disputeData.transaction.merchant, amount: disputeData.transaction.amount }),
+        ...investigation.auditTrail
+      ]
     };
 
     setDisputes(prev => [newDispute, ...prev]);
@@ -175,6 +204,43 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
     }, ...prev]);
 
     return caseId;
+  };
+
+  const investigatorAction = (id: string, action: 'approve' | 'request-info' | 'escalate' | 'override', reason?: string) => {
+    setDisputes(prev => prev.map(disp => {
+      if (disp.id !== id) return disp;
+
+      const currentAudit = disp.auditTrail || [];
+      if (action === 'approve') {
+        return {
+          ...disp,
+          status: 'Resolved',
+          decisionExplanation: 'Investigator approved the Resolve AI recommendation.',
+          auditTrail: [...currentAudit, createAuditEvent(id, 'RECOMMENDATION_APPROVED', 'INVESTIGATOR'), createAuditEvent(id, 'CASE_RESOLVED', 'INVESTIGATOR')]
+        };
+      }
+      if (action === 'request-info') {
+        return {
+          ...disp,
+          status: 'More Info Required',
+          merchantRequirements: [...(disp.merchantRequirements || []), 'Additional customer or merchant documentation requested'],
+          auditTrail: [...currentAudit, createAuditEvent(id, 'MORE_INFO_REQUESTED', 'INVESTIGATOR')]
+        };
+      }
+      if (action === 'escalate') {
+        return {
+          ...disp,
+          status: 'Escalated',
+          auditTrail: [...currentAudit, createAuditEvent(id, 'CASE_ESCALATED', 'INVESTIGATOR')]
+        };
+      }
+      return {
+        ...disp,
+        status: 'Under Review',
+        decisionExplanation: `Investigator override: ${reason || 'No reason supplied.'}`,
+        auditTrail: [...currentAudit, createAuditEvent(id, 'AI_RECOMMENDATION_OVERRIDDEN', 'INVESTIGATOR', { reason: reason || 'No reason supplied' })]
+      };
+    }));
   };
 
   const submitAppeal = (id: string, explanation: string, files: { name: string; size: string }[]) => {
@@ -227,6 +293,7 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
         setSelectedTransactionForDispute,
         createDispute,
         submitAppeal,
+        investigatorAction,
         markNotificationAsRead,
         markAllNotificationsAsRead,
         isAuthenticated,

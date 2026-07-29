@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useDisputes, type DisputeFile } from '../context/DisputeContext';
 import { 
   LayoutDashboard, CreditCard, PlusCircle, History, Bell, Settings, 
-  Menu, X, Upload, FileText, Trash2, Eye, CheckCircle2, Plus, LogOut
+  Menu, X, Upload, FileText, Trash2, Eye, CheckCircle2, Plus, LogOut, BriefcaseBusiness
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -131,11 +131,12 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ files, onAddFiles, onRem
     }
   };
 
-  const addSampleFile = (type: 'receipt' | 'chat' | 'invoice') => {
+  const addSampleFile = (type: 'receipt' | 'chat' | 'invoice' | 'refund') => {
     const samples = {
       receipt: { name: 'store_receipt_7231.png', size: '380 KB', category: 'Receipts' },
       chat: { name: 'merchant_chat_log.pdf', size: '1.2 MB', category: 'Chat Logs' },
-      invoice: { name: 'invoice_2026_098.pdf', size: '540 KB', category: 'Invoices' }
+      invoice: { name: 'invoice_2026_098.pdf', size: '540 KB', category: 'Invoices' },
+      refund: { name: 'luxe_hotel_cancellation_refund_email_LH-92831.pdf', size: '620 KB', category: 'Merchant Email' }
     };
     onAddFiles([samples[type]]);
   };
@@ -157,7 +158,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ files, onAddFiles, onRem
           <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
             <span className="text-[9px] uppercase font-black text-slate-500 block mb-2.5 tracking-widest">Demo File Shortcut</span>
             <div className="flex flex-wrap gap-2">
-              {(['receipt', 'chat', 'invoice'] as const).map(type => (
+              {(['receipt', 'chat', 'invoice', 'refund'] as const).map(type => (
                 <button key={type} type="button" onClick={() => addSampleFile(type)}
                   className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-[10px] font-bold text-slate-700 hover:border-[#016FD0] hover:text-[#016FD0] transition-colors flex items-center gap-1.5 cursor-pointer">
                   <Plus className="w-3.5 h-3.5" /> Add {type.toUpperCase()}
@@ -232,6 +233,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
     { id: 'transactions', label: 'Transactions', icon: CreditCard },
     { id: 'raise-dispute', label: 'Raise Dispute', icon: PlusCircle },
     { id: 'my-disputes', label: 'My Disputes', icon: History },
+    { id: 'investigator', label: 'Investigator', icon: BriefcaseBusiness },
     { id: 'notifications', label: 'Notifications', icon: Bell, badge: unreadCount > 0 ? unreadCount : undefined },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];

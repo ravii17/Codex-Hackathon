@@ -3,7 +3,8 @@ import { useDisputes, type Transaction } from '../context/DisputeContext';
 import { Card, Button, StatusChip, UploadZone } from './PortalUI';
 import { 
   Search, ArrowRight, ArrowLeft, CheckCircle2, ChevronRight, 
-  Scale, AlertCircle, Lock, RotateCcw, Database, Upload
+  Scale, AlertCircle, Lock, RotateCcw, Database, Upload,
+  Hotel, Laptop, Coffee, Car, CreditCard, ShieldCheck
 } from 'lucide-react';
 
 // ==========================================
@@ -11,13 +12,12 @@ import {
 // ==========================================
 
 export const Dashboard: React.FC = () => {
-  const { setCurrentPage, disputes, transactions, setActiveDisputeId, logout } = useDisputes();
+  const { setCurrentPage, disputes, transactions, setActiveDisputeId, setSelectedTransactionForDispute } = useDisputes();
 
   const stats = {
-    total: disputes.length,
     active: disputes.filter(d => !['Resolved', 'Rejected'].includes(d.status)).length,
-    resolved: disputes.filter(d => d.status === 'Resolved').length,
-    pending: disputes.filter(d => d.status === 'Merchant Response').length
+    balance: transactions.reduce((sum, tx) => sum + tx.amount, 0),
+    eligible: transactions.filter(t => t.disputeEligible).length
   };
 
   const handleTrackCase = (id: string) => {
@@ -25,125 +25,155 @@ export const Dashboard: React.FC = () => {
     setCurrentPage('my-disputes');
   };
 
+  const featuredTransaction = transactions.find(t => t.disputeEligible) || transactions[0];
+  const activityIcons = [Hotel, Laptop, Coffee, Car, CreditCard];
+  const recentActivity = transactions.slice(0, 4);
+
+  const handleReviewCharge = () => {
+    if (!featuredTransaction) return;
+    setSelectedTransactionForDispute(featuredTransaction);
+    setCurrentPage('raise-dispute');
+  };
+
   return (
     <div className="space-y-6 text-left">
-      {/* Welcome Banner */}
-      <Card className="flex flex-col md:flex-row md:items-center justify-between gap-6 p-6 sm:p-8 bg-white border-slate-200">
-        <div className="space-y-1.5">
-          <span className="text-[9px] font-black text-[#016FD0] uppercase tracking-widest block">Cardmember Services</span>
-          <h1 className="text-2xl font-black text-slate-950 tracking-tight">Welcome Back, David</h1>
-          <p className="text-xs text-slate-500 max-w-lg leading-relaxed font-medium">Track your existing claims, upload verification evidence, and appeal charge decisions directly from your secure member console.</p>
+      <section className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <p className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Welcome Back</p>
+          <h1 className="text-3xl font-semibold text-[#00133a] tracking-tight">Good morning, David</h1>
         </div>
-        <div className="flex gap-2.5 shrink-0 flex-wrap">
-          <Button variant="outline" size="sm" onClick={logout} className="border-rose-500/20 text-rose-400 hover:bg-rose-500/10 font-bold">
-            Sign In Page
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setCurrentPage('my-disputes')}>Track Cases</Button>
-          <Button variant="primary" size="sm" onClick={() => setCurrentPage('transactions')}>New Dispute</Button>
+        <div className="flex gap-2.5">
+          <Button variant="primary" onClick={() => setCurrentPage('transactions')}>View Statement</Button>
+          <Button variant="outline" onClick={() => setCurrentPage('my-disputes')}>Manage Claims</Button>
         </div>
-      </Card>
+      </section>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Disputes', val: stats.total, sub: 'All-time filings' },
-          { label: 'Active Cases', val: stats.active, sub: 'Under investigation' },
-          { label: 'Resolved Cases', val: stats.resolved, sub: 'Refunds finalized' },
-          { label: 'Pending Merchant', val: stats.pending, sub: 'Waiting SLA window' }
-        ].map(item => (
-          <Card key={item.label} hoverable className="p-5 relative overflow-hidden group">
-            <div className="absolute inset-0 bg-[#016FD0]/[0.02] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-            <span className="text-[9px] font-extrabold text-slate-500 uppercase tracking-widest block">{item.label}</span>
-            <div className="text-3xl font-black text-slate-950 mt-2.5 tracking-tight">{item.val}</div>
-            <span className="text-[10px] text-slate-500 block mt-1.5 font-medium">{item.sub}</span>
-          </Card>
-        ))}
-      </div>
-
-      {/* Activity Timeline & Active Claims list */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          {/* My Disputes Active List */}
-          <Card>
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h3 className="text-sm font-bold text-slate-950 uppercase tracking-wide">My Active Disputes</h3>
-                <p className="text-[10px] text-slate-500">Currently pending dispute records</p>
-              </div>
-              <button onClick={() => setCurrentPage('my-disputes')} className="text-xs font-bold text-[#38BDF8] hover:underline cursor-pointer">View all</button>
-            </div>
-
-            <div className="divide-y divide-slate-200">
-              {disputes.filter(d => d.status !== 'Resolved').map(d => (
-                <div key={d.id} className="py-4 first:pt-0 last:pb-0 flex items-center justify-between group">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-xs font-black text-slate-800 font-mono tracking-wide">{d.id}</span>
-                      <StatusChip status={d.status} />
-                    </div>
-                    <p className="text-xs text-slate-500 font-semibold">{d.transaction.merchant} • <b className="text-slate-950">${d.transaction.amount.toFixed(2)}</b></p>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={() => handleTrackCase(d.id)} className="text-[10px] py-1">Track</Button>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="lg:col-span-7 space-y-6">
+          <div className="relative aspect-[1.58/1] w-full rounded-xl shadow-[0_20px_40px_rgba(15,23,42,0.14)] overflow-hidden bg-[linear-gradient(135deg,#d1d5db_0%,#f8fafc_52%,#9ca3af_100%)] border border-white">
+            <div className="absolute -right-4 top-6 text-[88px] sm:text-[120px] font-black text-white/40 select-none">PLATINUM</div>
+            <div className="relative z-10 h-full flex flex-col justify-between p-6 sm:p-8">
+              <div className="flex justify-between items-start">
+                <div className="w-16 h-12 bg-slate-100 border border-white/70 rounded-md shadow-inner flex items-center justify-center">
+                  <div className="w-10 h-8 border border-slate-400/30 rounded" />
                 </div>
-              ))}
-            </div>
-          </Card>
-
-          {/* Transactions Quick Access */}
-          <Card>
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h3 className="text-sm font-bold text-slate-950 uppercase tracking-wide">Recent Statement Transactions</h3>
-                <p className="text-[10px] text-slate-500">Select posted charges to dispute</p>
+                <div className="text-[#00133a] font-bold tracking-widest text-sm sm:text-lg">AMERICAN EXPRESS</div>
               </div>
-              <button onClick={() => setCurrentPage('transactions')} className="text-xs font-bold text-[#38BDF8] hover:underline cursor-pointer">View statement</button>
-            </div>
-            
-            <div className="divide-y divide-slate-200 text-xs font-medium">
-              {transactions.slice(0, 3).map(tx => (
-                <div key={tx.id} className="py-3.5 flex justify-between items-center group">
+
+              <div>
+                <div className="text-slate-600 font-mono text-lg sm:text-xl tracking-[0.2em] mb-3">.... .... .... 91008</div>
+                <div className="flex justify-between items-end">
                   <div>
-                    <p className="font-extrabold text-slate-900">{tx.merchant}</p>
-                    <p className="text-[10px] text-slate-500 mt-0.5">{tx.date} • {tx.category}</p>
+                    <p className="text-[10px] uppercase font-bold text-slate-500">Member Since</p>
+                    <p className="text-sm font-mono text-slate-900">18</p>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <span className="font-black text-slate-950">${tx.amount.toFixed(2)}</span>
-                    {tx.disputeEligible ? (
-                      <button onClick={() => { setCurrentPage('transactions'); }} className="text-[#38BDF8] font-bold hover:underline cursor-pointer">Dispute</button>
-                    ) : (
-                      <span className="text-slate-600 font-bold">Locked</span>
-                    )}
+                  <div className="text-right">
+                    <p className="text-[10px] uppercase font-bold text-slate-500">Card Member</p>
+                    <p className="text-sm font-semibold tracking-wide text-slate-900">DAVID K.</p>
                   </div>
                 </div>
-              ))}
+              </div>
             </div>
-          </Card>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="p-6 rounded-xl">
+              <p className="text-xs font-bold text-slate-500 uppercase mb-1">Total Balance</p>
+              <p className="text-xl font-semibold text-[#00133a]">${stats.balance.toFixed(2)}</p>
+            </Card>
+            <Card className="p-6 rounded-xl">
+              <p className="text-xs font-bold text-slate-500 uppercase mb-1">Active Claims</p>
+              <p className="text-xl font-semibold text-[#00133a]">{stats.active}</p>
+            </Card>
+            <Card className="p-6 rounded-xl border-l-4 border-l-[#005eb1]">
+              <p className="text-xs font-bold text-[#005eb1] uppercase mb-1">Eligible Charges</p>
+              <p className="text-xl font-semibold text-[#00133a]">{stats.eligible}</p>
+            </Card>
+          </div>
         </div>
 
-        {/* Right timeline info column */}
-        <div className="space-y-4">
-          <Card className="h-full">
-            <h3 className="text-sm font-bold text-slate-950 uppercase tracking-wide mb-6">System Alerts & Timeline</h3>
-            <div className="relative border-l border-slate-200 pl-4 space-y-6 ml-1.5">
-              {[
-                { title: 'Best Buy Dispute Acknowledged', time: 'Today', desc: 'Temporary dispute credit has been posted.', color: 'bg-[#016FD0] ' },
-                { title: 'Evidence Review Completed', time: 'Yesterday', desc: 'Invoice uploaded, completeness rating at 82%.', color: 'bg-[#10B981] ' },
-                { title: 'Target Case Decisions Prepared', time: 'June 25', desc: 'Case was rejected. Appeal window is open.', color: 'bg-[#EF4444] ' }
-              ].map(act => (
-                <div key={act.title} className="relative text-xs">
-                  <span className={`absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full border border-slate-950 ${act.color}`} />
-                  <p className="font-bold text-slate-800">{act.title} <span className="text-[9px] text-slate-500 font-normal">({act.time})</span></p>
-                  <p className="text-slate-500 mt-1 leading-normal font-medium">{act.desc}</p>
-                </div>
-              ))}
-            </div>
-          </Card>
+        <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl flex flex-col overflow-hidden min-h-[420px]">
+          <div className="p-6 border-b border-slate-200 flex justify-between items-center">
+            <h3 className="text-base font-semibold text-[#00133a]">Recent Activity</h3>
+            <button onClick={() => setCurrentPage('transactions')} className="text-[#005eb1] text-sm font-semibold hover:underline">View All</button>
+          </div>
+
+          <div className="flex-1 divide-y divide-slate-200">
+            {recentActivity.map((tx, index) => {
+              const Icon = activityIcons[index % activityIcons.length];
+              const featured = tx.id === featuredTransaction?.id;
+              return (
+                <button
+                  key={tx.id}
+                  onClick={() => tx.disputeEligible ? handleReviewCharge() : setCurrentPage('transactions')}
+                  className={`w-full p-6 text-left transition-colors relative ${featured ? 'bg-[#f2f4f6] hover:bg-[#edeef0]' : 'hover:bg-[#f8f9fb]'}`}
+                >
+                  {featured && <span className="absolute left-0 top-0 bottom-0 w-1 bg-[#005eb1]" />}
+                  <div className="flex items-center gap-4">
+                    <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${featured ? 'bg-[#d5e3ff] text-[#003365]' : 'bg-slate-100 text-slate-500'}`}>
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between gap-3">
+                        <h4 className="font-semibold text-[#00133a] truncate">{tx.merchant}</h4>
+                        <p className="font-semibold text-[#00133a]">${tx.amount.toFixed(2)}</p>
+                      </div>
+                      <div className="flex justify-between items-center gap-3 mt-1">
+                        <p className="text-sm text-slate-500">{tx.category} | {tx.date}</p>
+                        {featured && <span className="text-[10px] px-2 py-0.5 bg-[#005eb1]/10 text-[#005eb1] rounded-full font-bold uppercase">Review</span>}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
+
+      <section className="bg-[#dae2ff] rounded-xl p-6 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-lg bg-white/80 flex items-center justify-center text-[#00133a] shrink-0">
+            <ShieldCheck className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold text-[#001946] mb-1">Smart Dispute Protection</h3>
+            <p className="text-sm text-[#284482] max-w-xl">A recent eligible charge is ready for review. You can open a claim or continue monitoring your account activity.</p>
+          </div>
+        </div>
+        <Button className="bg-white text-[#00133a] border-white hover:bg-slate-50 shrink-0" onClick={handleReviewCharge}>
+          Review Charge
+        </Button>
+      </section>
+
+      {disputes.length > 0 && (
+        <Card className="p-0 overflow-hidden rounded-xl">
+          <div className="p-5 border-b border-slate-200 flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-semibold text-[#00133a]">Open Claims</h3>
+              <p className="text-xs text-slate-500">Current dispute records and case status</p>
+            </div>
+            <button onClick={() => setCurrentPage('my-disputes')} className="text-[#005eb1] text-sm font-semibold hover:underline">View All</button>
+          </div>
+          <div className="divide-y divide-slate-200">
+            {disputes.filter(d => d.status !== 'Resolved').slice(0, 3).map(d => (
+              <div key={d.id} className="p-5 flex items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-xs font-bold text-slate-800 font-mono">{d.id}</span>
+                    <StatusChip status={d.status} />
+                  </div>
+                  <p className="text-sm text-slate-500 mt-1">{d.transaction.merchant} | ${d.transaction.amount.toFixed(2)}</p>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => handleTrackCase(d.id)}>Track</Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
     </div>
   );
 };
-
 // ==========================================
 // 2. TRANSACTIONS LEDGER PAGE
 // ==========================================
@@ -595,7 +625,273 @@ export const DisputeTracking: React.FC = () => {
 };
 
 // ==========================================
-// 5. NOTIFICATIONS PAGE
+// 5. INVESTIGATOR DASHBOARD
+// ==========================================
+
+export const InvestigatorDashboard: React.FC = () => {
+  const { disputes, setActiveDisputeId, setCurrentPage } = useDisputes();
+  const [filter, setFilter] = useState('All');
+
+  const queue = disputes.filter(dispute => {
+    if (filter === 'All') return true;
+    if (filter === 'High Priority') return dispute.investigation?.riskLevel === 'HIGH';
+    if (filter === 'AI Ready') return dispute.status === 'AI Ready';
+    if (filter === 'Under Review') return dispute.status === 'Under Review';
+    if (filter === 'Escalated') return dispute.status === 'Escalated';
+    return true;
+  });
+
+  const openCase = (id: string) => {
+    setActiveDisputeId(id);
+    setCurrentPage('investigator-case');
+  };
+
+  const stats = [
+    { label: 'Open Cases', value: disputes.filter(d => !['Resolved', 'Rejected'].includes(d.status)).length },
+    { label: 'High Priority', value: disputes.filter(d => d.investigation?.riskLevel === 'HIGH').length },
+    { label: 'AI Ready', value: disputes.filter(d => d.status === 'AI Ready').length },
+    { label: 'Under Review', value: disputes.filter(d => d.status === 'Under Review').length }
+  ];
+
+  return (
+    <div className="space-y-6 text-left">
+      <div>
+        <p className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Investigator View</p>
+        <h1 className="text-2xl font-black text-slate-950 tracking-tight">Resolve AI Case Queue</h1>
+        <p className="text-xs text-slate-500 mt-1">Review AI-ready cases, risk signals, recommendations, and audit history.</p>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {stats.map(stat => (
+          <Card key={stat.label} className="p-5">
+            <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">{stat.label}</span>
+            <p className="text-3xl font-black text-[#00133a] mt-2">{stat.value}</p>
+          </Card>
+        ))}
+      </div>
+
+      <Card className="p-4">
+        <div className="flex flex-wrap gap-2">
+          {['All', 'High Priority', 'AI Ready', 'Under Review', 'Escalated'].map(item => (
+            <button
+              key={item}
+              onClick={() => setFilter(item)}
+              className={`px-3 py-2 rounded-lg text-xs font-bold border transition-colors ${filter === item ? 'bg-[#016FD0] text-white border-[#016FD0]' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="p-0 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr className="text-left text-slate-500 uppercase tracking-wider">
+                <th className="px-5 py-3">Case ID</th>
+                <th className="px-5 py-3">Customer</th>
+                <th className="px-5 py-3">Merchant</th>
+                <th className="px-5 py-3 text-right">Amount</th>
+                <th className="px-5 py-3">Case Type</th>
+                <th className="px-5 py-3">Risk</th>
+                <th className="px-5 py-3">Confidence</th>
+                <th className="px-5 py-3">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {queue.map(dispute => (
+                <tr key={dispute.id} onClick={() => openCase(dispute.id)} className="hover:bg-slate-50 cursor-pointer">
+                  <td className="px-5 py-4 font-mono font-black text-slate-800">{dispute.id}</td>
+                  <td className="px-5 py-4 font-semibold text-slate-700">{dispute.customerName || 'David K.'}</td>
+                  <td className="px-5 py-4 font-semibold text-slate-900">{dispute.transaction.merchant}</td>
+                  <td className="px-5 py-4 text-right font-black text-slate-950">${dispute.transaction.amount.toFixed(2)}</td>
+                  <td className="px-5 py-4 text-slate-600">{dispute.investigation?.reason.replaceAll('_', ' ') || dispute.reason}</td>
+                  <td className="px-5 py-4"><StatusChip status={dispute.investigation?.riskLevel || 'Manual'} /></td>
+                  <td className="px-5 py-4 font-black text-[#00133a]">{dispute.investigation?.confidenceScore ?? '--'}%</td>
+                  <td className="px-5 py-4"><StatusChip status={dispute.status} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+// ==========================================
+// 6. INVESTIGATION WORKSPACE
+// ==========================================
+
+export const InvestigationWorkspace: React.FC = () => {
+  const { disputes, activeDisputeId, investigatorAction, setCurrentPage } = useDisputes();
+  const dispute = disputes.find(d => d.id === activeDisputeId) || disputes[0];
+  const [overrideReason, setOverrideReason] = useState('');
+
+  if (!dispute) {
+    return (
+      <Card className="py-12 text-center max-w-sm mx-auto">
+        <p className="text-sm font-bold text-slate-700">No case selected.</p>
+        <Button className="mt-4" onClick={() => setCurrentPage('investigator')}>Back to Queue</Button>
+      </Card>
+    );
+  }
+
+  const investigation = dispute.investigation;
+
+  return (
+    <div className="space-y-6 text-left">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <button onClick={() => setCurrentPage('investigator')} className="text-xs font-bold text-[#005eb1] hover:underline mb-2">Back to case queue</button>
+          <h1 className="text-2xl font-black text-slate-950 tracking-tight">Investigation Workspace</h1>
+          <p className="text-xs text-slate-500 mt-1">{dispute.id} | {dispute.transaction.merchant} | ${dispute.transaction.amount.toFixed(2)}</p>
+        </div>
+        <StatusChip status={dispute.status} />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        <div className="xl:col-span-3 space-y-4">
+          <Card className="p-5 space-y-4">
+            <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide">Case Details</h3>
+            {[
+              ['Case ID', dispute.id],
+              ['Customer', dispute.customerName || 'David K.'],
+              ['Merchant', dispute.transaction.merchant],
+              ['Amount', `$${dispute.transaction.amount.toFixed(2)}`],
+              ['Transaction Date', dispute.transaction.date],
+              ['Reason', dispute.reason],
+              ['Statement', String(dispute.questionnaire.additionalInfo || 'No customer statement supplied.')]
+            ].map(([label, value]) => (
+              <div key={label} className="border-t border-slate-200 pt-3">
+                <p className="text-[10px] uppercase font-black text-slate-500">{label}</p>
+                <p className="text-xs font-semibold text-slate-800 mt-1">{value}</p>
+              </div>
+            ))}
+          </Card>
+
+          <Card className="p-5">
+            <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide mb-3">Evidence</h3>
+            <div className="space-y-2">
+              {dispute.evidenceFiles.length ? dispute.evidenceFiles.map(file => (
+                <div key={file.id} className="p-3 rounded-lg border border-slate-200 bg-slate-50">
+                  <p className="text-xs font-bold text-slate-800">{file.name}</p>
+                  <p className="text-[10px] text-slate-500">{file.size} | {file.category}</p>
+                </div>
+              )) : <p className="text-xs text-slate-500">No files uploaded.</p>}
+            </div>
+          </Card>
+        </div>
+
+        <div className="xl:col-span-6 space-y-4">
+          <Card className="p-5 space-y-5">
+            <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide">Resolve AI Analysis</h3>
+            {investigation ? (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <p className="text-[10px] text-slate-500 uppercase font-black">Classification</p>
+                    <p className="text-xs font-black text-[#00133a] mt-1">{investigation.classification.replaceAll('_', ' ')}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <p className="text-[10px] text-slate-500 uppercase font-black">Reason</p>
+                    <p className="text-xs font-black text-[#00133a] mt-1">{investigation.reason.replaceAll('_', ' ')}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <p className="text-[10px] text-slate-500 uppercase font-black">Risk</p>
+                    <p className="text-xs font-black text-[#00133a] mt-1">{investigation.riskLevel}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <p className="text-[10px] text-slate-500 uppercase font-black">Confidence</p>
+                    <p className="text-xs font-black text-[#00133a] mt-1">{investigation.confidenceScore}%</p>
+                  </div>
+                </div>
+
+                <section>
+                  <h4 className="text-xs font-black text-slate-700 uppercase mb-2">Findings</h4>
+                  <div className="space-y-2">
+                    {investigation.findings.map(item => <p key={item} className="text-xs bg-white border border-slate-200 rounded-lg p-3 text-slate-700">{item}</p>)}
+                  </div>
+                </section>
+
+                <section>
+                  <h4 className="text-xs font-black text-slate-700 uppercase mb-2">Signals</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {investigation.signals.map(signal => (
+                      <div key={signal.label} className="text-xs border border-slate-200 rounded-lg p-3">
+                        <span className={`font-black ${signal.type === 'POSITIVE' ? 'text-emerald-700' : signal.type === 'WARNING' ? 'text-amber-700' : 'text-rose-700'}`}>{signal.type}</span>
+                        <p className="text-slate-700 mt-1">{signal.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section>
+                  <h4 className="text-xs font-black text-slate-700 uppercase mb-2">Investigation Timeline</h4>
+                  <div className="space-y-2">
+                    {investigation.workflowEvents.map(item => (
+                      <div key={item.id} className="flex items-center gap-2 text-xs text-slate-700">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span>{item.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </>
+            ) : <p className="text-sm text-slate-500">Manual review required. Automated investigation was not available.</p>}
+          </Card>
+        </div>
+
+        <div className="xl:col-span-3 space-y-4">
+          <Card className="p-5 space-y-4 border-t-4 border-t-[#016FD0]">
+            <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide">AI Recommendation</h3>
+            <div>
+              <p className="text-[10px] uppercase font-black text-slate-500">Recommended Action</p>
+              <p className="text-lg font-black text-[#00133a] mt-1">{investigation?.recommendedAction.replaceAll('_', ' ') || 'MANUAL REVIEW'}</p>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">{investigation?.recommendationExplanation || 'Investigator review is required.'}</p>
+            {investigation?.missingInformation.length ? (
+              <div>
+                <p className="text-[10px] uppercase font-black text-slate-500 mb-2">Missing Information</p>
+                <ul className="space-y-1">
+                  {investigation.missingInformation.map(item => <li key={item} className="text-xs text-slate-700">- {item}</li>)}
+                </ul>
+              </div>
+            ) : null}
+
+            <div className="space-y-2 pt-2">
+              <Button className="w-full" onClick={() => investigatorAction(dispute.id, 'approve')}>Approve Recommendation</Button>
+              <Button variant="outline" className="w-full" onClick={() => investigatorAction(dispute.id, 'request-info')}>Request More Information</Button>
+              <Button variant="danger" className="w-full" onClick={() => investigatorAction(dispute.id, 'escalate')}>Escalate</Button>
+            </div>
+
+            <div className="border-t border-slate-200 pt-4 space-y-2">
+              <label className="text-[10px] uppercase font-black text-slate-500">Override Reason</label>
+              <textarea value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} rows={3} className="w-full border border-slate-200 rounded-lg p-2 text-xs" placeholder="Required for override" />
+              <Button variant="secondary" className="w-full" disabled={!overrideReason.trim()} onClick={() => investigatorAction(dispute.id, 'override', overrideReason)}>Override</Button>
+            </div>
+          </Card>
+
+          <Card className="p-5">
+            <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide mb-3">Audit Trail</h3>
+            <div className="space-y-3 max-h-72 overflow-y-auto">
+              {(dispute.auditTrail || []).map(item => (
+                <div key={item.id} className="border-l-2 border-slate-200 pl-3">
+                  <p className="text-xs font-black text-slate-800">{item.action.replaceAll('_', ' ')}</p>
+                  <p className="text-[10px] text-slate-500">{item.actorType} | {new Date(item.timestamp).toLocaleString()}</p>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// 7. NOTIFICATIONS PAGE
 // ==========================================
 
 export const Notifications: React.FC = () => {
@@ -771,4 +1067,5 @@ export const Settings: React.FC = () => {
     </div>
   );
 };
+
 
