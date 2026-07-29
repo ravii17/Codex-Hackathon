@@ -1,12 +1,11 @@
 import http from 'node:http';
+import { config } from './config.js';
 import { getCustomerCase, getInvestigatorCase, investigateDispute } from './investigationService.js';
-
-const PORT = Number(process.env.PORT || 4000);
 
 const sendJson = (res, statusCode, body) => {
   res.writeHead(statusCode, {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': process.env.CORS_ORIGIN || 'http://127.0.0.1:5173',
+    'Access-Control-Allow-Origin': config.corsOrigin,
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type,Authorization'
   });
@@ -82,6 +81,6 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`Backend API listening on http://127.0.0.1:${PORT}`);
+server.listen(config.port, () => {
+  console.log(`Backend API listening on http://127.0.0.1:${config.port}`);
 });
