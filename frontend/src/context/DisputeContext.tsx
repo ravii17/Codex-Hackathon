@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, type ReactNode } from 'react';
-import { createAuditEvent, runInvestigationWorkflow, type AuditEvent, type InvestigationResult } from '../services/investigationWorkflow';
+import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { type AuditEvent, type InvestigationResult } from '../services/investigationWorkflow';
 
 export interface Transaction {
   id: string;
@@ -59,9 +59,9 @@ interface DisputeContextType {
   setActiveDisputeId: (id: string | null) => void;
   selectedTransactionForDispute: Transaction | null;
   setSelectedTransactionForDispute: (tx: Transaction | null) => void;
-  createDispute: (disputeData: Omit<Dispute, 'id' | 'submittedAt' | 'expectedResolution'>) => string;
-  submitAppeal: (id: string, explanation: string, files: { name: string; size: string }[]) => void;
-  investigatorAction: (id: string, action: 'approve' | 'request-info' | 'escalate' | 'override', reason?: string) => void;
+  createDispute: (disputeData: Omit<Dispute, 'id' | 'submittedAt' | 'expectedResolution'>) => Promise<string>;
+  submitAppeal: (id: string, explanation: string, files: { name: string; size: string }[]) => Promise<void>;
+  investigatorAction: (id: string, action: 'approve' | 'request-info' | 'escalate' | 'override', reason?: string) => Promise<void>;
   markNotificationAsRead: (id: string) => void;
   markAllNotificationsAsRead: () => void;
   isAuthenticated: boolean;
@@ -70,82 +70,168 @@ interface DisputeContextType {
   logout: () => void;
 }
 
-const initialTransactions: Transaction[] = [
-  { id: 'TX-1000', merchant: 'Luxe Hotel', amount: 1200.00, date: '2026-07-25', category: 'Travel', status: 'Posted', disputeEligible: true },
-  { id: 'TX-1001', merchant: 'Delta Air Lines', amount: 654.20, date: '2026-07-24', category: 'Travel', status: 'Posted', disputeEligible: true },
-  { id: 'TX-1002', merchant: 'Amazon.com', amount: 129.99, date: '2026-07-23', category: 'Shopping', status: 'Posted', disputeEligible: true },
-  { id: 'TX-1003', merchant: 'Apple Store', amount: 1299.00, date: '2026-07-20', category: 'Electronics', status: 'Posted', disputeEligible: true },
-  { id: 'TX-1004', merchant: 'Uber Trip', amount: 24.50, date: '2026-07-19', category: 'Ride Share', status: 'Posted', disputeEligible: true },
-  { id: 'TX-1005', merchant: 'Starbucks Coffee', amount: 15.75, date: '2026-07-19', category: 'Dining', status: 'Pending', disputeEligible: false },
-  { id: 'TX-1006', merchant: 'Best Buy', amount: 459.99, date: '2026-07-15', category: 'Electronics', status: 'Disputed', disputeEligible: false, disputeId: 'AMEX-2026-00451' },
-  { id: 'TX-1007', merchant: 'Target Stores', amount: 89.50, date: '2026-06-18', category: 'Shopping', status: 'Disputed', disputeEligible: false, disputeId: 'AMEX-2026-00210' }
-];
-
-const initialDisputes: Dispute[] = [
-  {
-    id: 'AMEX-2026-00451',
-    transaction: initialTransactions[6], // Best Buy
-    reason: 'Unauthorized Transaction',
-    mappedCode: '4554',
-    status: 'Merchant Response',
-    merchantCountdown: 4,
-    merchantRequirements: ['Delivery Confirmation', 'Signed Receipt'],
-    evidenceReviewed: ['Receipt'],
-    submittedAt: '2026-07-16',
-    expectedResolution: '5 Business Days',
-    questionnaire: { contactedMerchant: 'Yes', additionalInfo: 'Card in possession, charges not authorized by me.' },
-    evidenceFiles: [{ id: 'f-1', name: 'invoice_statement.png', size: '1.4 MB', category: 'Invoices' }],
-    completenessScore: 82
-  },
-  {
-    id: 'AMEX-2026-00210',
-    transaction: initialTransactions[7], // Target
-    reason: 'Defective Product',
-    mappedCode: '4555',
-    status: 'Rejected',
-    submittedAt: '2026-06-20',
-    expectedResolution: 'Completed',
-    questionnaire: { contactedMerchant: 'Yes' },
-    evidenceFiles: [],
-    completenessScore: 40,
-    decisionExplanation: 'Rejected. Merchant provided delivery confirmation. Cardholder failed to upload photos showing item defects or proof of item return.'
-  }
-];
-
-const initialNotifications: Notification[] = [
-  { id: 'N-1', title: 'Dispute Case Updated', message: 'Best Buy dispute (AMEX-2026-00451) is awaiting merchant response. 4 days remaining.', timeGroup: 'Today', read: false, type: 'update', disputeId: 'AMEX-2026-00451' },
-  { id: 'N-2', title: 'Appeal Window Closing', message: 'Appeal deadline for Target (AMEX-2026-00210) is approaching. 20 days remaining.', timeGroup: 'Earlier', read: false, type: 'appeal_warning', disputeId: 'AMEX-2026-00210' }
-];
-
 const DisputeContext = createContext<DisputeContextType | undefined>(undefined);
 const AUTH_STORAGE_KEY = 'amex-resolve-auth';
 const DEMO_EMAIL = 'david.k@amex.com';
 const DEMO_PASSWORD = 'password123';
+const BACKEND_URL = 'http://127.0.0.1:4000';
 
 const hasSavedSession = () => {
   if (typeof window === 'undefined') return false;
   return window.localStorage.getItem(AUTH_STORAGE_KEY) === 'true';
 };
 
+const mapBackendStatusToFrontend = (status: string): Dispute['status'] => {
+  switch (status) {
+    case 'SUBMITTED': return 'Submitted';
+    case 'AI_INVESTIGATING': return 'AI Investigating';
+    case 'AI_READY': return 'AI Ready';
+    case 'UNDER_REVIEW': return 'Under Review';
+    case 'MORE_INFO_REQUIRED': return 'More Info Required';
+    case 'ESCALATED': return 'Escalated';
+    case 'MANUAL_REVIEW': return 'Manual Review';
+    case 'RESOLVED': return 'Resolved';
+    default: return 'Under Review';
+  }
+};
+
 export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [currentPage, setCurrentPage] = useState<string>('dashboard');
-  const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
-  const [disputes, setDisputes] = useState<Dispute[]>(() => initialDisputes.map(dispute => {
-    const investigation = runInvestigationWorkflow(dispute, initialTransactions);
-    return {
-      ...dispute,
-      status: dispute.status === 'Rejected' ? dispute.status : 'AI Ready',
-      investigation,
-      auditTrail: [
-        createAuditEvent(dispute.id, 'CASE_CREATED', 'CUSTOMER', { merchant: dispute.transaction.merchant, amount: dispute.transaction.amount }),
-        ...investigation.auditTrail
-      ]
-    };
-  }));
-  const [notifications, setNotifications] = useState<Notification[]>(initialNotifications);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [disputes, setDisputes] = useState<Dispute[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [activeDisputeId, setActiveDisputeId] = useState<string | null>(null);
   const [selectedTransactionForDispute, setSelectedTransactionForDispute] = useState<Transaction | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => hasSavedSession());
+  const [currentRole, setCurrentRole] = useState<string>('cardmember');
+
+  // Load backend data helper
+  const fetchAllData = async (role = 'cardmember') => {
+    try {
+      const customerId = 'CUST-1008';
+      
+      // 1. Fetch Transactions
+      const txRes = await fetch(`${BACKEND_URL}/api/transactions`, {
+        headers: {
+          'X-User-Role': role,
+          'X-Customer-Id': customerId
+        }
+      });
+      const txData = await txRes.json();
+      if (txData.ok) {
+        setTransactions(txData.transactions);
+      }
+
+      // 2. Fetch Disputes Queue/Cases
+      const url = role === 'investigator' 
+        ? `${BACKEND_URL}/api/investigator/cases`
+        : `${BACKEND_URL}/api/customer/cases`;
+        
+      const dispRes = await fetch(url, {
+        headers: {
+          'X-User-Role': role,
+          'X-Customer-Id': customerId
+        }
+      });
+      const dispData = await dispRes.json();
+
+      if (dispData.ok) {
+        const rawCases = role === 'investigator' ? dispData.cases : dispData.disputes;
+        const mappedDisputes = await Promise.all(
+          rawCases.map(async (c: any) => {
+            const detailUrl = role === 'investigator'
+              ? `${BACKEND_URL}/api/investigator/cases/${c.caseId}/investigation`
+              : `${BACKEND_URL}/api/customer/cases/${c.caseId}`;
+
+            const detailRes = await fetch(detailUrl, {
+              headers: {
+                'X-User-Role': role,
+                'X-Customer-Id': customerId
+              }
+            });
+            const detailData = await detailRes.json();
+
+            if (detailData.ok) {
+              const det = detailData.case;
+              return {
+                id: det.disputeId,
+                transaction: {
+                  id: det.transactionId || 'TX-1000',
+                  merchant: det.merchant,
+                  amount: det.amount,
+                  date: det.transactionDate || det.submittedAt,
+                  category: 'Retail',
+                  status: 'Disputed',
+                  disputeEligible: false,
+                  disputeId: det.disputeId
+                },
+                reason: det.reason,
+                mappedCode: det.mappedCode || '4554',
+                status: mapBackendStatusToFrontend(det.status),
+                submittedAt: det.submittedAt,
+                expectedResolution: det.expectedResolution,
+                questionnaire: det.questionnaire,
+                completenessScore: det.completenessScore,
+                decisionExplanation: det.decisionExplanation,
+                customerName: det.customerName || 'David K.',
+                evidenceFiles: det.evidenceFiles || [],
+                investigation: det.investigation,
+                auditTrail: det.auditTrail
+              } as Dispute;
+            }
+            return null;
+          })
+        );
+
+        const validDisputes = mappedDisputes.filter((d): d is Dispute => d !== null);
+        setDisputes(validDisputes);
+
+        // Generate mock notifications based on active disputes
+        const notifs: Notification[] = [];
+        validDisputes.forEach((disp, index) => {
+          if (disp.status === 'More Info Required') {
+            notifs.push({
+              id: `N-info-${disp.id}`,
+              title: 'More Information Required',
+              message: `Your dispute for ${disp.transaction.merchant} needs supporting evidence.`,
+              timeGroup: 'Today',
+              read: false,
+              type: 'evidence_request',
+              disputeId: disp.id
+            });
+          } else if (index === 0) {
+            notifs.push({
+              id: `N-up-${disp.id}`,
+              title: 'Dispute Status Updated',
+              message: `Case status for ${disp.transaction.merchant} is currently: ${disp.status}.`,
+              timeGroup: 'Today',
+              read: false,
+              type: 'update',
+              disputeId: disp.id
+            });
+          }
+        });
+        setNotifications(notifs);
+      }
+    } catch (err) {
+      console.error('[DisputeContext] Error fetching database records:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchAllData(currentRole);
+    }
+  }, [isAuthenticated, currentRole]);
+
+  const handleSetCurrentPage = (page: string) => {
+    setCurrentPage(page);
+    if (page === 'investigator' || page === 'investigator-case') {
+      setCurrentRole('investigator');
+    } else {
+      setCurrentRole('cardmember');
+    }
+  };
 
   const login = async (email: string, password: string) => {
     const normalizedEmail = email.trim().toLowerCase();
@@ -164,119 +250,85 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
     window.localStorage.removeItem(AUTH_STORAGE_KEY);
     setIsAuthenticated(false);
     setCurrentPage('dashboard');
+    setCurrentRole('cardmember');
   };
 
-  const createDispute = (disputeData: Omit<Dispute, 'id' | 'submittedAt' | 'expectedResolution'>) => {
-    const nextNum = disputes.length + 1;
-    const caseId = `AMEX-2026-00${String(nextNum).padStart(3, '0')}`;
-    const today = new Date().toISOString().split('T')[0];
-
-    const baseDispute: Dispute = {
-      ...disputeData,
-      id: caseId,
-      status: 'AI Investigating',
-      submittedAt: today,
-      expectedResolution: '5 Business Days',
-      customerName: 'David K.'
-    };
-    let investigation: InvestigationResult | undefined;
-    let investigationStatus: Dispute['status'] = 'AI Ready';
-    let auditTrail: AuditEvent[] = [createAuditEvent(caseId, 'CASE_CREATED', 'CUSTOMER', { merchant: disputeData.transaction.merchant, amount: disputeData.transaction.amount })];
-
+  const createDispute = async (disputeData: Omit<Dispute, 'id' | 'submittedAt' | 'expectedResolution'>): Promise<string> => {
     try {
-      investigation = runInvestigationWorkflow(baseDispute, transactions);
-      auditTrail = [...auditTrail, ...investigation.auditTrail];
-    } catch {
-      investigationStatus = 'Manual Review';
-      auditTrail = [...auditTrail, createAuditEvent(caseId, 'INVESTIGATION_STARTED', 'AI', { failedSafely: true })];
+      const res = await fetch(`${BACKEND_URL}/api/disputes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Role': 'cardmember',
+          'X-Customer-Id': 'CUST-1008'
+        },
+        body: JSON.stringify({
+          transactionId: disputeData.transaction.id,
+          reason: disputeData.reason,
+          mappedCode: disputeData.mappedCode,
+          questionnaire: disputeData.questionnaire,
+          completenessScore: disputeData.completenessScore,
+          customerName: 'David K.',
+          evidenceFiles: disputeData.evidenceFiles.map(file => ({
+            name: file.name,
+            size: file.size,
+            category: file.category
+          }))
+        })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        await fetchAllData('cardmember');
+        return data.caseId; // Return caseId
+      } else {
+        throw new Error(data.error || 'Failed to submit dispute');
+      }
+    } catch (err) {
+      console.error('Error creating dispute:', err);
+      throw err;
     }
-
-    const newDispute: Dispute = {
-      ...baseDispute,
-      status: investigationStatus,
-      investigation,
-      auditTrail
-    };
-
-    setDisputes(prev => [newDispute, ...prev]);
-    setTransactions(prev => prev.map(t => t.id === disputeData.transaction.id ? { ...t, status: 'Disputed', disputeEligible: false, disputeId: caseId } : t));
-    
-    setNotifications(prev => [{
-      id: `N-${Date.now()}`,
-      title: 'Dispute Filed Successfully',
-      message: `Dispute ${caseId} for ${disputeData.transaction.merchant} has been received.`,
-      timeGroup: 'Today',
-      read: false,
-      type: 'update',
-      disputeId: caseId
-    }, ...prev]);
-
-    return caseId;
   };
 
-  const investigatorAction = (id: string, action: 'approve' | 'request-info' | 'escalate' | 'override', reason?: string) => {
-    setDisputes(prev => prev.map(disp => {
-      if (disp.id !== id) return disp;
-
-      const currentAudit = disp.auditTrail || [];
-      if (action === 'approve') {
-        return {
-          ...disp,
-          status: 'Resolved',
-          decisionExplanation: 'Investigator approved the Resolve AI recommendation.',
-          auditTrail: [...currentAudit, createAuditEvent(id, 'RECOMMENDATION_APPROVED', 'INVESTIGATOR'), createAuditEvent(id, 'CASE_RESOLVED', 'INVESTIGATOR')]
-        };
+  const investigatorAction = async (id: string, action: 'approve' | 'request-info' | 'escalate' | 'override', reason?: string) => {
+    try {
+      const caseId = id.startsWith('CASE-') ? id : `CASE-${id}`;
+      const res = await fetch(`${BACKEND_URL}/api/cases/${caseId}/action`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Role': 'investigator',
+          'X-Customer-Id': 'CUST-1008'
+        },
+        body: JSON.stringify({ action, reason })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        await fetchAllData('investigator');
+      } else {
+        throw new Error(data.error || 'Failed to trigger investigator action');
       }
-      if (action === 'request-info') {
-        return {
-          ...disp,
-          status: 'More Info Required',
-          merchantRequirements: [...(disp.merchantRequirements || []), 'Additional customer or merchant documentation requested'],
-          auditTrail: [...currentAudit, createAuditEvent(id, 'MORE_INFO_REQUESTED', 'INVESTIGATOR')]
-        };
-      }
-      if (action === 'escalate') {
-        return {
-          ...disp,
-          status: 'Escalated',
-          auditTrail: [...currentAudit, createAuditEvent(id, 'CASE_ESCALATED', 'INVESTIGATOR')]
-        };
-      }
-      return {
-        ...disp,
-        status: 'Under Review',
-        decisionExplanation: `Investigator override: ${reason || 'No reason supplied.'}`,
-        auditTrail: [...currentAudit, createAuditEvent(id, 'AI_RECOMMENDATION_OVERRIDDEN', 'INVESTIGATOR', { reason: reason || 'No reason supplied' })]
-      };
-    }));
+    } catch (err) {
+      console.error('Error triggered action:', err);
+    }
   };
 
-  const submitAppeal = (id: string, explanation: string, files: { name: string; size: string }[]) => {
-    const today = new Date().toISOString().split('T')[0];
-    const newFiles: DisputeFile[] = files.map((f, i) => ({
-      id: `ap-${Date.now()}-${i}`,
-      name: f.name,
-      size: f.size,
-      category: 'Appeal Documents'
-    }));
-
-    setDisputes(prev => prev.map(disp => disp.id === id ? {
-      ...disp,
-      status: 'Appealed',
-      decisionExplanation: `Appealed on ${today}. Under Senior Auditor review. Reason: ${explanation}`,
-      evidenceFiles: [...disp.evidenceFiles, ...newFiles],
-      completenessScore: Math.min(100, disp.completenessScore + 30)
-    } : disp));
-
-    setNotifications(prev => [{
-      id: `N-${Date.now()}`,
-      title: 'Appeal Submitted',
-      message: `Appeal for dispute ${id} has been submitted for senior auditor review.`,
-      timeGroup: 'Today',
-      read: false,
-      type: 'update',
-      disputeId: id
-    }, ...prev]);
+  const submitAppeal = async (id: string, explanation: string, files: { name: string; size: string }[]) => {
+    try {
+      const caseId = id.startsWith('CASE-') ? id : `CASE-${id}`;
+      // Simulate/trigger senior auditor override to set case status to UNDER_REVIEW
+      await fetch(`${BACKEND_URL}/api/cases/${caseId}/action`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Role': 'investigator',
+          'X-Customer-Id': 'CUST-1008'
+        },
+        body: JSON.stringify({ action: 'override', reason: `Appeal submitted: ${explanation}` })
+      });
+      await fetchAllData('cardmember');
+    } catch (e) {
+      console.error('Appeal submission failed:', e);
+    }
   };
 
   const markNotificationAsRead = (id: string) => {
@@ -291,7 +343,7 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
     <DisputeContext.Provider
       value={{
         currentPage,
-        setCurrentPage,
+        setCurrentPage: handleSetCurrentPage,
         transactions,
         disputes,
         notifications,

@@ -296,10 +296,10 @@ export const DisputeWizard: React.FC = () => {
     setFiles(prev => prev.filter(f => f.id !== id));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!selectedTransactionForDispute) return;
     const codes: Record<string, string> = { 'Unauthorized Transaction': '4554', 'Item Not Received': '4512', 'Charged Twice': '4540', 'Defective Product': '4555' };
-    const caseId = createDispute({
+    const caseId = await createDispute({
       transaction: selectedTransactionForDispute,
       reason: reason || 'Other Billing Discrepancy',
       mappedCode: codes[reason] || '4599',
@@ -600,6 +600,46 @@ export const DisputeTracking: React.FC = () => {
                 <Button variant="danger" size="sm" onClick={() => setCurrentPage('appeal')} className="text-xs font-bold gap-1.5 shrink-0"><Scale className="w-3.5 h-3.5" /> Appeal Case</Button>
               )}
             </Card>
+
+            {/* Resolve AI Reviewing Status Checkbox Panel */}
+            {(['Submitted', 'AI Investigating', 'AI Ready', 'Manual Review'].includes(dispute.status)) && (
+              <Card className="p-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <ShieldCheck className="w-5 h-5 text-[#016FD0] animate-pulse" />
+                  <p className="font-extrabold text-xs text-[#00133a]">
+                    {dispute.status === 'AI Ready' 
+                      ? 'Initial review complete. Your case is ready for review.' 
+                      : 'Resolve AI is reviewing your dispute...'}
+                  </p>
+                </div>
+                
+                <div className="space-y-2.5 pt-1 text-xs">
+                  {/* Item 1: Dispute received */}
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
+                    <span className="text-slate-800 font-semibold">Dispute received</span>
+                  </div>
+                  
+                  {/* Item 2: Transaction reviewed */}
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className={`w-4 h-4 ${['AI Investigating', 'AI Ready', 'Manual Review', 'Resolved', 'Rejected', 'Under Review'].includes(dispute.status) ? 'text-[#10B981]' : 'text-slate-350'}`} />
+                    <span className={`font-semibold ${['AI Investigating', 'AI Ready', 'Manual Review', 'Resolved', 'Rejected', 'Under Review'].includes(dispute.status) ? 'text-slate-800' : 'text-slate-400'}`}>Transaction reviewed</span>
+                  </div>
+                  
+                  {/* Item 3: Case classified */}
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className={`w-4 h-4 ${['AI Ready', 'Manual Review', 'Resolved', 'Rejected', 'Under Review'].includes(dispute.status) ? 'text-[#10B981]' : 'text-slate-350'}`} />
+                    <span className={`font-semibold ${['AI Ready', 'Manual Review', 'Resolved', 'Rejected', 'Under Review'].includes(dispute.status) ? 'text-slate-800' : 'text-slate-400'}`}>Case classified</span>
+                  </div>
+                  
+                  {/* Item 4: Initial investigation completed */}
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className={`w-4 h-4 ${['AI Ready', 'Manual Review', 'Resolved', 'Rejected', 'Under Review'].includes(dispute.status) ? 'text-[#10B981]' : 'text-slate-350'}`} />
+                    <span className={`font-semibold ${['AI Ready', 'Manual Review', 'Resolved', 'Rejected', 'Under Review'].includes(dispute.status) ? 'text-slate-800' : 'text-slate-400'}`}>Initial investigation completed</span>
+                  </div>
+                </div>
+              </Card>
+            )}
 
             {/* Merchant Countdown alerts */}
             {dispute.status === 'Merchant Response' && (
