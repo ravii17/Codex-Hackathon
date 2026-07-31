@@ -9,6 +9,15 @@ import {
 } from 'lucide-react';
 
 // ==========================================
+// UTILITIES
+// ==========================================
+
+const cleanLabel = (value?: string, fallback: string = 'Unknown') => {
+  if (value === undefined || value === null) return fallback;
+  return value.replaceAll('_', ' ');
+};
+
+// ==========================================
 // 1. DASHBOARD PAGE
 // ==========================================
 
@@ -180,12 +189,22 @@ export const Dashboard: React.FC = () => {
 // ==========================================
 
 export const Transactions: React.FC = () => {
-  const { transactions, setCurrentPage, setSelectedTransactionForDispute, setActiveDisputeId } = useDisputes();
+  const { transactions, disputes, setCurrentPage, setSelectedTransactionForDispute, setActiveDisputeId } = useDisputes();
   const [search, setSearch] = useState('');
 
   const filtered = useMemo(() => {
     return transactions.filter(t => t.merchant.toLowerCase().includes(search.toLowerCase()));
   }, [transactions, search]);
+
+  const isTxDisputed = (txId: string) => {
+    return disputes.some(d => d.transaction.id === txId) || transactions.find(t => t.id === txId)?.status === 'Disputed';
+  };
+
+  const getDisputeIdForTx = (txId: string) => {
+    const disp = disputes.find(d => d.transaction.id === txId);
+    if (disp) return disp.id;
+    return transactions.find(t => t.id === txId)?.disputeId || null;
+  };
 
   const handleDispute = (tx: Transaction) => {
     setSelectedTransactionForDispute(tx);
@@ -227,31 +246,39 @@ export const Transactions: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 font-semibold text-slate-800">
-              {filtered.map(tx => (
-                <tr key={tx.id} className="hover:bg-white transition-colors">
-                  <td className="px-6 py-4.5 font-bold text-slate-900">{tx.merchant}</td>
-                  <td className="px-6 py-4.5 text-slate-500">{tx.date}</td>
-                  <td className="px-6 py-4.5 text-right font-black text-slate-950">${tx.amount.toFixed(2)}</td>
-                  <td className="px-6 py-4.5 text-center">
-                    <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                      tx.status === 'Pending' 
-                        ? 'bg-amber-500/10 text-amber-400' 
-                        : tx.status === 'Disputed' 
-                          ? 'bg-sky-500/10 text-sky-400' 
-                          : 'bg-slate-50 text-slate-500'
-                    }`}>{tx.status}</span>
-                  </td>
-                  <td className="px-6 py-4.5 text-right">
-                    {tx.disputeEligible ? (
-                      <Button variant="primary" size="sm" onClick={() => handleDispute(tx)} className="text-[10px] py-1 font-bold">Dispute</Button>
-                    ) : tx.status === 'Disputed' && tx.disputeId ? (
-                      <Button variant="outline" size="sm" onClick={() => handleTrack(tx.disputeId!)} className="text-[10px] py-1 font-bold">Track Case</Button>
-                    ) : (
-                      <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Uncleared</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {filtered.map(tx => {
+                const disputed = isTxDisputed(tx.id);
+                const dispId = getDisputeIdForTx(tx.id);
+                return (
+                  <tr key={tx.id} className="hover:bg-white transition-colors">
+                    <td className="px-6 py-4.5 font-bold text-slate-900">{tx.merchant}</td>
+                    <td className="px-6 py-4.5 text-slate-500">{tx.date}</td>
+                    <td className="px-6 py-4.5 text-right font-black text-slate-950">${tx.amount.toFixed(2)}</td>
+                    <td className="px-6 py-4.5 text-center">
+                      <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                        tx.status === 'Pending' 
+                          ? 'bg-amber-500/10 text-amber-400' 
+                          : disputed 
+                            ? 'bg-sky-500/10 text-sky-400' 
+                            : 'bg-slate-50 text-slate-500'
+                      }`}>{disputed ? 'Disputed' : tx.status}</span>
+                    </td>
+                    <td className="px-6 py-4.5 text-right">
+                      {disputed ? (
+                        dispId ? (
+                          <Button variant="outline" size="sm" onClick={() => handleTrack(dispId)} className="text-[10px] py-1 font-bold">Track Case</Button>
+                        ) : (
+                          <span className="text-[10px] text-sky-500 font-bold uppercase tracking-wider">Disputed</span>
+                        )
+                      ) : tx.disputeEligible ? (
+                        <Button variant="primary" size="sm" onClick={() => handleDispute(tx)} className="text-[10px] py-1 font-bold">Dispute</Button>
+                      ) : (
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Uncleared</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -268,6 +295,7 @@ export const DisputeWizard: React.FC = () => {
   const { selectedTransactionForDispute, setSelectedTransactionForDispute, setCurrentPage, createDispute, setActiveDisputeId, disputes } = useDisputes();
   const [step, setStep] = useState(1);
   const [submittedCaseId, setSubmittedCaseId] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Form States
   const [reason, setReason] = useState('');
@@ -299,17 +327,27 @@ export const DisputeWizard: React.FC = () => {
 
   const handleSubmit = async () => {
     if (!selectedTransactionForDispute) return;
+    setSubmitError(null);
     const codes: Record<string, string> = { 'Unauthorized Transaction': '4554', 'Item Not Received': '4512', 'Charged Twice': '4540', 'Defective Product': '4555' };
-    const caseId = await createDispute({
-      transaction: selectedTransactionForDispute,
-      reason: reason || 'Other Billing Discrepancy',
-      mappedCode: codes[reason] || '4599',
-      status: 'Submitted',
-      questionnaire: { contactedMerchant: contacted, additionalInfo: notes },
-      evidenceFiles: files,
-      completenessScore: 82
-    });
-    setSubmittedCaseId(caseId);
+    try {
+      const caseId = await createDispute({
+        transaction: selectedTransactionForDispute,
+        reason: reason || 'Other Billing Discrepancy',
+        mappedCode: codes[reason] || '4599',
+        status: 'Submitted',
+        questionnaire: { contactedMerchant: contacted, additionalInfo: notes },
+        evidenceFiles: files,
+        completenessScore: 82
+      });
+      setSubmittedCaseId(caseId);
+    } catch (err: any) {
+      console.error('Submission failed in UI:', err);
+      if (err.message.includes('already disputed') || err.message.includes('already been submitted')) {
+        setSubmitError('A dispute has already been submitted for this transaction.');
+      } else {
+        setSubmitError(err.message || 'An unexpected error occurred during submission.');
+      }
+    }
   };
 
   const handleTrack = () => {
@@ -360,7 +398,7 @@ export const DisputeWizard: React.FC = () => {
             </div>
             <div>
               <span className="text-[9px] uppercase font-black text-slate-500 tracking-wider">Classification</span>
-              <p className="text-xs font-bold text-slate-800 mt-0.5">{submittedDispute?.investigation?.classification.replaceAll('_', ' ') || 'Under Review'}</p>
+              <p className="text-xs font-bold text-slate-800 mt-0.5">{cleanLabel(submittedDispute?.investigation?.classification, 'Under Review')}</p>
             </div>
             <div>
               <span className="text-[9px] uppercase font-black text-slate-500 tracking-wider">Current Stage</span>
@@ -408,6 +446,13 @@ export const DisputeWizard: React.FC = () => {
               </React.Fragment>
             ))}
           </div>
+
+          {submitError && (
+            <div className="max-w-lg mx-auto mb-6 p-3.5 bg-rose-50 border border-rose-200 rounded text-rose-700 text-xs font-semibold flex items-start gap-2.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0 mt-1.5" />
+              <span>{submitError}</span>
+            </div>
+          )}
 
           {/* STEP 1: Details */}
           {step === 1 && selectedTransactionForDispute && (
@@ -594,7 +639,7 @@ export const DisputeTracking: React.FC = () => {
                 </div>
                 <h3 className="text-sm font-bold text-slate-950 mt-1.5">{dispute.transaction.merchant} — ${dispute.transaction.amount.toFixed(2)}</h3>
                 {dispute.investigation && (
-                  <p className="text-[11px] text-slate-500 mt-1">Case {dispute.investigation.caseId} | {dispute.investigation.classification.replaceAll('_', ' ')}</p>
+                  <p className="text-[11px] text-slate-500 mt-1">Case {dispute.investigation?.caseId || 'N/A'} | {cleanLabel(dispute.investigation?.classification, 'Under Review')}</p>
                 )}
                 
                 {/* Customer Friendly Subtitle Status updates */}
@@ -880,7 +925,7 @@ export const InvestigatorDashboard: React.FC = () => {
                   <td className="px-5 py-4 font-semibold text-slate-700">{dispute.customerName || 'David K.'}</td>
                   <td className="px-5 py-4 font-semibold text-slate-900">{dispute.transaction.merchant}</td>
                   <td className="px-5 py-4 text-right font-black text-slate-950">${dispute.transaction.amount.toFixed(2)}</td>
-                  <td className="px-5 py-4 text-slate-650 font-semibold">{dispute.investigation?.classification.replaceAll('_', ' ') || dispute.reason}</td>
+                  <td className="px-5 py-4 text-slate-650 font-semibold">{cleanLabel(dispute.investigation?.classification, dispute.reason)}</td>
                   <td className="px-5 py-4"><StatusChip status={dispute.investigation?.riskLevel || 'Manual'} /></td>
                   <td className="px-5 py-4 font-black text-[#00133a]">{dispute.investigation?.confidenceScore ?? '--'}%</td>
                   <td className="px-5 py-4"><StatusChip status={dispute.status} /></td>
@@ -999,11 +1044,11 @@ export const InvestigationWorkspace: React.FC = () => {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-left">
                     <p className="text-[10px] text-slate-500 uppercase font-black">Classification</p>
-                    <p className="text-xs font-black text-[#00133a] mt-1">{investigation.classification.replaceAll('_', ' ')}</p>
+                    <p className="text-xs font-black text-[#00133a] mt-1">{cleanLabel(investigation?.classification)}</p>
                   </div>
                   <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-left">
                     <p className="text-[10px] text-slate-500 uppercase font-black">Reason</p>
-                    <p className="text-xs font-black text-[#00133a] mt-1">{investigation.reason.replaceAll('_', ' ')}</p>
+                    <p className="text-xs font-black text-[#00133a] mt-1">{cleanLabel(investigation?.reason)}</p>
                   </div>
                   <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-left">
                     <p className="text-[10px] text-slate-500 uppercase font-black">Risk</p>
@@ -1053,7 +1098,7 @@ export const InvestigationWorkspace: React.FC = () => {
             <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide">AI Recommendation</h3>
             <div>
               <p className="text-[10px] uppercase font-black text-slate-500">Recommended Action</p>
-              <p className="text-lg font-black text-[#00133a] mt-1">{investigation?.recommendedAction.replaceAll('_', ' ') || 'MANUAL REVIEW'}</p>
+              <p className="text-lg font-black text-[#00133a] mt-1">{cleanLabel(investigation?.recommendedAction, 'MANUAL REVIEW')}</p>
             </div>
             <p className="text-xs text-slate-650 leading-relaxed font-semibold">{investigation?.recommendationExplanation || 'Investigator review is required.'}</p>
             {investigation?.missingInformation.length ? (
@@ -1100,7 +1145,7 @@ export const InvestigationWorkspace: React.FC = () => {
                         {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
-                    <p className="font-extrabold text-slate-950 mt-1 leading-normal">{item.action.replaceAll('_', ' ')}</p>
+                    <p className="font-extrabold text-slate-950 mt-1 leading-normal">{cleanLabel(item.action)}</p>
                     {item.metadata && (item.metadata.reason || item.metadata.newAction) && (
                       <div className="bg-slate-50 border border-slate-200 rounded p-2 mt-1.5 font-medium text-[10px] text-slate-600 leading-normal">
                         {item.metadata.newAction && <p><b>Override Target:</b> {item.metadata.newAction}</p>}
@@ -1122,7 +1167,7 @@ export const InvestigationWorkspace: React.FC = () => {
             <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide">Approve Resolve AI Recommendation?</h3>
             <div className="text-xs text-slate-700 space-y-2 border bg-slate-50 p-4 rounded-lg">
               <p><b>Case ID:</b> {dispute.id}</p>
-              <p><b>Recommended Action:</b> {investigation?.recommendedAction.replaceAll('_', ' ')}</p>
+              <p><b>Recommended Action:</b> {cleanLabel(investigation?.recommendedAction)}</p>
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <Button variant="outline" size="sm" onClick={() => setShowConfirmApprove(false)}>Cancel</Button>
@@ -1193,7 +1238,7 @@ export const InvestigationWorkspace: React.FC = () => {
           <Card className="max-w-md w-full p-6 bg-white border border-slate-200 shadow-2xl space-y-4">
             <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide">Override Resolve AI Recommendation</h3>
             <div className="text-xs text-slate-700 space-y-2 border bg-slate-50 p-4 rounded-lg">
-              <p><b>AI Recommendation:</b> {investigation?.recommendedAction.replaceAll('_', ' ')}</p>
+              <p><b>AI Recommendation:</b> {cleanLabel(investigation?.recommendedAction)}</p>
             </div>
             
             <div className="space-y-2">
