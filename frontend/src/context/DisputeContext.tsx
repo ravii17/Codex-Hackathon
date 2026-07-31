@@ -17,6 +17,7 @@ export interface DisputeFile {
   name: string;
   size: string;
   category: string;
+  extractedData?: string;
 }
 
 export interface Dispute {
@@ -61,19 +62,24 @@ interface DisputeContextType {
   setSelectedTransactionForDispute: (tx: Transaction | null) => void;
   createDispute: (disputeData: Omit<Dispute, 'id' | 'submittedAt' | 'expectedResolution'>) => Promise<string>;
   submitAppeal: (id: string, explanation: string, files: { name: string; size: string }[]) => Promise<void>;
-  investigatorAction: (id: string, action: 'approve' | 'request-info' | 'escalate' | 'override', reason?: string) => Promise<void>;
+  investigatorAction: (id: string, action: 'approve' | 'request-info' | 'escalate' | 'override' | 'start-review', reason?: string, targetAction?: string) => Promise<void>;
   markNotificationAsRead: (id: string) => void;
   markAllNotificationsAsRead: () => void;
   isAuthenticated: boolean;
   setIsAuthenticated: (auth: boolean) => void;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
+  currentRole: string;
+  investigatorFilter: string;
+  setInvestigatorFilter: (filter: string) => void;
+  customerId: string;
+  customerName: string;
+  setCustomerId: (id: string) => void;
+  setCustomerName: (name: string) => void;
 }
 
 const DisputeContext = createContext<DisputeContextType | undefined>(undefined);
 const AUTH_STORAGE_KEY = 'amex-resolve-auth';
-const DEMO_EMAIL = 'david.k@amex.com';
-const DEMO_PASSWORD = 'password123';
 const BACKEND_URL = 'http://127.0.0.1:4000';
 
 const hasSavedSession = () => {
@@ -104,11 +110,22 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [selectedTransactionForDispute, setSelectedTransactionForDispute] = useState<Transaction | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => hasSavedSession());
   const [currentRole, setCurrentRole] = useState<string>('cardmember');
+  const [investigatorFilter, setInvestigatorFilter] = useState<string>('All');
 
   // Load backend data helper
-  const fetchAllData = async (role = 'cardmember') => {
+  const [customerId, setCustomerId] = useState<string>(() => {
+    const saved = localStorage.getItem('amex-resolve-customer-id');
+    return saved || 'CUST-1008';
+  });
+  const [customerName, setCustomerName] = useState<string>(() => {
+    const saved = localStorage.getItem('amex-resolve-customer-name');
+    return saved || 'David K.';
+  });
+
+  // Load backend data helper
+  const fetchAllData = async (role = 'cardmember', activeCustomerId = customerId) => {
     try {
-      const customerId = 'CUST-1008';
+      const customerId = activeCustomerId;
       
       // 1. Fetch Transactions
       const txRes = await fetch(`${BACKEND_URL}/api/transactions`, {
@@ -236,19 +253,58 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
   const login = async (email: string, password: string) => {
     const normalizedEmail = email.trim().toLowerCase();
     await new Promise(resolve => setTimeout(resolve, 1000));
-    if (normalizedEmail !== DEMO_EMAIL || password !== DEMO_PASSWORD) {
-      setIsAuthenticated(false);
-      return false;
+    if (normalizedEmail === 'investigator@amex.com' && password === 'password123') {
+      window.localStorage.setItem(AUTH_STORAGE_KEY, 'true');
+      setIsAuthenticated(true);
+      setCurrentRole('investigator');
+      setCurrentPage('investigator');
+      return true;
     }
 
-    window.localStorage.setItem(AUTH_STORAGE_KEY, 'true');
-    setIsAuthenticated(true);
-    return true;
+    let targetCustomerId = '';
+    let targetCustomerName = '';
+
+    if (normalizedEmail === 'david.k@amex.com' && password === 'password123') {
+      targetCustomerId = 'CUST-1008';
+      targetCustomerName = 'David K.';
+    } else if (normalizedEmail === 'alex.morgan@amex.com' && password === 'password123') {
+      targetCustomerId = 'CUST-1009';
+      targetCustomerName = 'Alex Morgan';
+    } else if (normalizedEmail === 'sarah.j@amex.com' && password === 'password123') {
+      targetCustomerId = 'CUST-1010';
+      targetCustomerName = 'Sarah Jenkins';
+    } else if (normalizedEmail === 'marcus.v@amex.com' && password === 'password123') {
+      targetCustomerId = 'CUST-1011';
+      targetCustomerName = 'Marcus Vance';
+    } else if (normalizedEmail === 'elena.r@amex.com' && password === 'password123') {
+      targetCustomerId = 'CUST-1012';
+      targetCustomerName = 'Elena Rostova';
+    }
+
+    if (targetCustomerId) {
+      setCustomerId(targetCustomerId);
+      setCustomerName(targetCustomerName);
+      window.localStorage.setItem('amex-resolve-customer-id', targetCustomerId);
+      window.localStorage.setItem('amex-resolve-customer-name', targetCustomerName);
+      window.localStorage.setItem(AUTH_STORAGE_KEY, 'true');
+      setIsAuthenticated(true);
+      setCurrentRole('cardmember');
+      setCurrentPage('dashboard');
+      await fetchAllData('cardmember', targetCustomerId);
+      return true;
+    }
+
+    setIsAuthenticated(false);
+    return false;
   };
 
   const logout = () => {
     window.localStorage.removeItem(AUTH_STORAGE_KEY);
+    window.localStorage.removeItem('amex-resolve-customer-id');
+    window.localStorage.removeItem('amex-resolve-customer-name');
     setIsAuthenticated(false);
+    setCustomerId('CUST-1008');
+    setCustomerName('David K.');
     setCurrentPage('dashboard');
     setCurrentRole('cardmember');
   };
@@ -260,7 +316,7 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
         headers: {
           'Content-Type': 'application/json',
           'X-User-Role': 'cardmember',
-          'X-Customer-Id': 'CUST-1008'
+          'X-Customer-Id': customerId
         },
         body: JSON.stringify({
           transactionId: disputeData.transaction.id,
@@ -268,7 +324,7 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
           mappedCode: disputeData.mappedCode,
           questionnaire: disputeData.questionnaire,
           completenessScore: disputeData.completenessScore,
-          customerName: 'David K.',
+          customerName: customerName,
           evidenceFiles: disputeData.evidenceFiles.map(file => ({
             name: file.name,
             size: file.size,
@@ -278,7 +334,7 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
       });
       const data = await res.json();
       if (data.ok) {
-        await fetchAllData('cardmember');
+        await fetchAllData('cardmember', customerId);
         return data.caseId; // Return caseId
       } else {
         throw new Error(data.error || 'Failed to submit dispute');
@@ -289,7 +345,7 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
-  const investigatorAction = async (id: string, action: 'approve' | 'request-info' | 'escalate' | 'override', reason?: string) => {
+  const investigatorAction = async (id: string, action: 'approve' | 'request-info' | 'escalate' | 'override' | 'start-review', reason?: string, targetAction?: string) => {
     try {
       const caseId = id.startsWith('CASE-') ? id : `CASE-${id}`;
       const res = await fetch(`${BACKEND_URL}/api/cases/${caseId}/action`, {
@@ -299,7 +355,7 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
           'X-User-Role': 'investigator',
           'X-Customer-Id': 'CUST-1008'
         },
-        body: JSON.stringify({ action, reason })
+        body: JSON.stringify({ action, reason, targetAction })
       });
       const data = await res.json();
       if (data.ok) {
@@ -312,7 +368,7 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
-  const submitAppeal = async (id: string, explanation: string, files: { name: string; size: string }[]) => {
+  const submitAppeal = async (id: string, explanation: string, _files: { name: string; size: string }[]) => {
     try {
       const caseId = id.startsWith('CASE-') ? id : `CASE-${id}`;
       // Simulate/trigger senior auditor override to set case status to UNDER_REVIEW
@@ -321,11 +377,11 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
         headers: {
           'Content-Type': 'application/json',
           'X-User-Role': 'investigator',
-          'X-Customer-Id': 'CUST-1008'
+          'X-Customer-Id': customerId
         },
         body: JSON.stringify({ action: 'override', reason: `Appeal submitted: ${explanation}` })
       });
-      await fetchAllData('cardmember');
+      await fetchAllData('cardmember', customerId);
     } catch (e) {
       console.error('Appeal submission failed:', e);
     }
@@ -359,7 +415,14 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
         isAuthenticated,
         setIsAuthenticated,
         login,
-        logout
+        logout,
+        currentRole,
+        investigatorFilter,
+        setInvestigatorFilter,
+        customerId,
+        customerName,
+        setCustomerId,
+        setCustomerName
       }}
     >
       {children}

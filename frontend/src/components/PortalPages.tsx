@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useDisputes, type Transaction } from '../context/DisputeContext';
 import { Card, Button, StatusChip, UploadZone } from './PortalUI';
 import { 
   Search, ArrowRight, ArrowLeft, CheckCircle2, ChevronRight, 
   Scale, AlertCircle, Lock, RotateCcw, Database, Upload,
-  Hotel, Laptop, Coffee, Car, CreditCard, ShieldCheck
+  Hotel, Laptop, Coffee, Car, CreditCard, ShieldCheck,
+  Cpu
 } from 'lucide-react';
 
 // ==========================================
@@ -586,7 +587,7 @@ export const DisputeTracking: React.FC = () => {
         {dispute ? (
           <div className="lg:col-span-2 space-y-6">
             <Card className="p-5 flex justify-between items-center gap-4">
-              <div>
+              <div className="w-full">
                 <div className="flex items-center gap-2.5">
                   <span className="text-xs font-black text-slate-800 font-mono tracking-wide">{dispute.id}</span>
                   <StatusChip status={dispute.status} />
@@ -594,6 +595,32 @@ export const DisputeTracking: React.FC = () => {
                 <h3 className="text-sm font-bold text-slate-950 mt-1.5">{dispute.transaction.merchant} — ${dispute.transaction.amount.toFixed(2)}</h3>
                 {dispute.investigation && (
                   <p className="text-[11px] text-slate-500 mt-1">Case {dispute.investigation.caseId} | {dispute.investigation.classification.replaceAll('_', ' ')}</p>
+                )}
+                
+                {/* Customer Friendly Subtitle Status updates */}
+                {dispute.status === 'More Info Required' && (
+                  <div className="text-xs font-extrabold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-2.5 flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Additional information is required for your dispute.</span>
+                  </div>
+                )}
+                {dispute.status === 'Escalated' && (
+                  <div className="text-xs font-extrabold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-2.5 py-1.5 mt-2.5 flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>Your case has been escalated for additional review.</span>
+                  </div>
+                )}
+                {dispute.status === 'Under Review' && (
+                  <div className="text-xs font-extrabold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-1.5 mt-2.5 flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 text-blue-600 shrink-0 animate-spin" />
+                    <span>Your case is currently being reviewed.</span>
+                  </div>
+                )}
+                {dispute.status === 'Resolved' && (
+                  <div className="text-xs font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5 mt-2.5 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Your dispute has been resolved.</span>
+                  </div>
                 )}
               </div>
               {dispute.status === 'Rejected' && (
@@ -696,16 +723,71 @@ export const DisputeTracking: React.FC = () => {
 // ==========================================
 
 export const InvestigatorDashboard: React.FC = () => {
-  const { disputes, setActiveDisputeId, setCurrentPage } = useDisputes();
-  const [filter, setFilter] = useState('All');
+  const { disputes, investigatorFilter: filter, setInvestigatorFilter: setFilter, setActiveDisputeId, setCurrentPage } = useDisputes();
+  const [metrics, setMetrics] = useState({ openCases: 0, highPriority: 0, aiReady: 0, underReview: 0 });
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('Newest');
+
+  // Fetch SQLite Metrics dynamically from backend
+  useEffect(() => {
+    fetch('http://127.0.0.1:4000/api/investigator/metrics', {
+      headers: {
+        'X-User-Role': 'investigator',
+        'X-Customer-Id': 'CUST-1008'
+      }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.ok) {
+          setMetrics(data.metrics);
+        }
+      })
+      .catch(err => console.error('[Metrics API Error]:', err));
+  }, [disputes]);
 
   const queue = disputes.filter(dispute => {
-    if (filter === 'All') return true;
-    if (filter === 'High Priority') return dispute.investigation?.riskLevel === 'HIGH';
-    if (filter === 'AI Ready') return dispute.status === 'AI Ready';
-    if (filter === 'Under Review') return dispute.status === 'Under Review';
-    if (filter === 'Escalated') return dispute.status === 'Escalated';
+    // 1. Filter tabs/sidebar selection
+    if (filter !== 'All') {
+      if (filter === 'High Priority' && dispute.investigation?.riskLevel !== 'HIGH') return false;
+      if (filter === 'AI Ready' && dispute.status !== 'AI Ready') return false;
+      if (filter === 'Under Review' && dispute.status !== 'Under Review') return false;
+      if (filter === 'Escalated' && dispute.status !== 'Escalated') return false;
+      if (filter === 'Resolved' && dispute.status !== 'Resolved') return false;
+    }
+
+    // 2. Search input matching
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      const caseIdMatch = dispute.id.toLowerCase().includes(q);
+      const customerMatch = (dispute.customerName || 'David K.').toLowerCase().includes(q);
+      const merchantMatch = dispute.transaction.merchant.toLowerCase().includes(q);
+      if (!caseIdMatch && !customerMatch && !merchantMatch) return false;
+    }
+
     return true;
+  });
+
+  // 3. Sorting
+  const sortedQueue = [...queue].sort((a, b) => {
+    if (sortBy === 'Newest') {
+      return new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime();
+    }
+    if (sortBy === 'Oldest') {
+      return new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime();
+    }
+    if (sortBy === 'Amount') {
+      return b.transaction.amount - a.transaction.amount;
+    }
+    if (sortBy === 'Risk') {
+      const riskOrder: Record<string, number> = { HIGH: 3, MEDIUM: 2, LOW: 1, Manual: 0 };
+      const riskA = riskOrder[a.investigation?.riskLevel || 'Manual'] || 0;
+      const riskB = riskOrder[b.investigation?.riskLevel || 'Manual'] || 0;
+      return riskB - riskA;
+    }
+    if (sortBy === 'Confidence') {
+      return (b.investigation?.confidenceScore || 0) - (a.investigation?.confidenceScore || 0);
+    }
+    return 0;
   });
 
   const openCase = (id: string) => {
@@ -714,18 +796,18 @@ export const InvestigatorDashboard: React.FC = () => {
   };
 
   const stats = [
-    { label: 'Open Cases', value: disputes.filter(d => !['Resolved', 'Rejected'].includes(d.status)).length },
-    { label: 'High Priority', value: disputes.filter(d => d.investigation?.riskLevel === 'HIGH').length },
-    { label: 'AI Ready', value: disputes.filter(d => d.status === 'AI Ready').length },
-    { label: 'Under Review', value: disputes.filter(d => d.status === 'Under Review').length }
+    { label: 'Open Cases', value: metrics.openCases },
+    { label: 'High Priority', value: metrics.highPriority },
+    { label: 'AI Ready', value: metrics.aiReady },
+    { label: 'Under Review', value: metrics.underReview }
   ];
 
   return (
     <div className="space-y-6 text-left">
       <div>
-        <p className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Investigator View</p>
-        <h1 className="text-2xl font-black text-slate-950 tracking-tight">Resolve AI Case Queue</h1>
-        <p className="text-xs text-slate-500 mt-1">Review AI-ready cases, risk signals, recommendations, and audit history.</p>
+        <p className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Resolve AI Agent Workspace</p>
+        <h1 className="text-2xl font-black text-slate-950 tracking-tight">AI-Assisted Case Operations</h1>
+        <p className="text-xs text-slate-500 mt-1">Manage claim review queues, investigate automated risk signals, and apply final decisions.</p>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -737,9 +819,9 @@ export const InvestigatorDashboard: React.FC = () => {
         ))}
       </div>
 
-      <Card className="p-4">
+      <Card className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex flex-wrap gap-2">
-          {['All', 'High Priority', 'AI Ready', 'Under Review', 'Escalated'].map(item => (
+          {['All', 'High Priority', 'AI Ready', 'Under Review', 'Escalated', 'Resolved'].map(item => (
             <button
               key={item}
               onClick={() => setFilter(item)}
@@ -748,6 +830,31 @@ export const InvestigatorDashboard: React.FC = () => {
               {item}
             </button>
           ))}
+        </div>
+
+        <div className="flex items-center gap-2.5 text-xs w-full md:w-auto">
+          <div className="relative flex-1 md:flex-none">
+            <Search className="absolute left-3.5 top-2.5 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search ID, customer, merchant..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10 pr-4 py-2 border border-slate-250 bg-white rounded-lg outline-none focus:border-[#016FD0] font-semibold text-slate-700 w-full"
+            />
+          </div>
+
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="px-3.5 py-2 border border-slate-250 bg-white rounded-lg outline-none focus:border-[#016FD0] font-bold text-slate-700"
+          >
+            <option value="Newest">Newest First</option>
+            <option value="Oldest">Oldest First</option>
+            <option value="Amount">Amount</option>
+            <option value="Risk">Risk Level</option>
+            <option value="Confidence">AI Confidence</option>
+          </select>
         </div>
       </Card>
 
@@ -760,25 +867,29 @@ export const InvestigatorDashboard: React.FC = () => {
                 <th className="px-5 py-3">Customer</th>
                 <th className="px-5 py-3">Merchant</th>
                 <th className="px-5 py-3 text-right">Amount</th>
-                <th className="px-5 py-3">Case Type</th>
+                <th className="px-5 py-3">Classification</th>
                 <th className="px-5 py-3">Risk</th>
-                <th className="px-5 py-3">Confidence</th>
+                <th className="px-5 py-3">AI Confidence</th>
                 <th className="px-5 py-3">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200">
-              {queue.map(dispute => (
+            <tbody className="divide-y divide-slate-200 bg-white">
+              {sortedQueue.length ? sortedQueue.map(dispute => (
                 <tr key={dispute.id} onClick={() => openCase(dispute.id)} className="hover:bg-slate-50 cursor-pointer">
                   <td className="px-5 py-4 font-mono font-black text-slate-800">{dispute.id}</td>
                   <td className="px-5 py-4 font-semibold text-slate-700">{dispute.customerName || 'David K.'}</td>
                   <td className="px-5 py-4 font-semibold text-slate-900">{dispute.transaction.merchant}</td>
                   <td className="px-5 py-4 text-right font-black text-slate-950">${dispute.transaction.amount.toFixed(2)}</td>
-                  <td className="px-5 py-4 text-slate-600">{dispute.investigation?.reason.replaceAll('_', ' ') || dispute.reason}</td>
+                  <td className="px-5 py-4 text-slate-650 font-semibold">{dispute.investigation?.classification.replaceAll('_', ' ') || dispute.reason}</td>
                   <td className="px-5 py-4"><StatusChip status={dispute.investigation?.riskLevel || 'Manual'} /></td>
                   <td className="px-5 py-4 font-black text-[#00133a]">{dispute.investigation?.confidenceScore ?? '--'}%</td>
                   <td className="px-5 py-4"><StatusChip status={dispute.status} /></td>
                 </tr>
-              ))}
+              )) : (
+                <tr>
+                  <td colSpan={8} className="px-5 py-8 text-center text-slate-500 font-semibold">No cases in this queue.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -794,7 +905,24 @@ export const InvestigatorDashboard: React.FC = () => {
 export const InvestigationWorkspace: React.FC = () => {
   const { disputes, activeDisputeId, investigatorAction, setCurrentPage } = useDisputes();
   const dispute = disputes.find(d => d.id === activeDisputeId) || disputes[0];
+
+  const [showConfirmApprove, setShowConfirmApprove] = useState(false);
+  const [showConfirmRequest, setShowConfirmRequest] = useState(false);
+  const [showConfirmEscalate, setShowConfirmEscalate] = useState(false);
+  const [showConfirmOverride, setShowConfirmOverride] = useState(false);
+
+  const [requestReason, setRequestReason] = useState('');
+  const [escalateReason, setEscalateReason] = useState('');
   const [overrideReason, setOverrideReason] = useState('');
+  const [overrideTargetAction, setOverrideTargetAction] = useState('APPROVE');
+  const [selectedFileFact, setSelectedFileFact] = useState<any>(null);
+
+  // Transition case automatically from AI_READY to UNDER_REVIEW on workspace load
+  useEffect(() => {
+    if (dispute && dispute.status === 'AI Ready') {
+      investigatorAction(dispute.id, 'start-review');
+    }
+  }, [dispute?.id, dispute?.status]);
 
   if (!dispute) {
     return (
@@ -808,17 +936,18 @@ export const InvestigationWorkspace: React.FC = () => {
   const investigation = dispute.investigation;
 
   return (
-    <div className="space-y-6 text-left">
+    <div className="space-y-6 text-left relative">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <button onClick={() => setCurrentPage('investigator')} className="text-xs font-bold text-[#005eb1] hover:underline mb-2">Back to case queue</button>
-          <h1 className="text-2xl font-black text-slate-950 tracking-tight">Investigation Workspace</h1>
+          <button onClick={() => setCurrentPage('investigator')} className="text-xs font-bold text-[#005eb1] hover:underline mb-2 flex items-center gap-1"><ArrowLeft className="w-3 h-3" /> Back to case queue</button>
+          <h1 className="text-2xl font-black text-slate-950 tracking-tight">Resolve AI Workspace</h1>
           <p className="text-xs text-slate-500 mt-1">{dispute.id} | {dispute.transaction.merchant} | ${dispute.transaction.amount.toFixed(2)}</p>
         </div>
         <StatusChip status={dispute.status} />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        {/* LEFT COLUMN: Case Details & Evidence */}
         <div className="xl:col-span-3 space-y-4">
           <Card className="p-5 space-y-4">
             <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide">Case Details</h3>
@@ -833,83 +962,92 @@ export const InvestigationWorkspace: React.FC = () => {
             ].map(([label, value]) => (
               <div key={label} className="border-t border-slate-200 pt-3">
                 <p className="text-[10px] uppercase font-black text-slate-500">{label}</p>
-                <p className="text-xs font-semibold text-slate-800 mt-1">{value}</p>
+                <p className="text-xs font-semibold text-slate-800 mt-1 leading-normal">{value}</p>
               </div>
             ))}
           </Card>
 
           <Card className="p-5">
-            <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide mb-3">Evidence</h3>
+            <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide mb-3">Evidence Documents</h3>
             <div className="space-y-2">
               {dispute.evidenceFiles.length ? dispute.evidenceFiles.map(file => (
-                <div key={file.id} className="p-3 rounded-lg border border-slate-200 bg-slate-50">
-                  <p className="text-xs font-bold text-slate-800">{file.name}</p>
-                  <p className="text-[10px] text-slate-500">{file.size} | {file.category}</p>
+                <div key={file.id} className="p-3 rounded-lg border border-slate-200 bg-slate-50 text-xs font-semibold">
+                  <p className="font-extrabold text-slate-850">{file.name}</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">{file.size} | {file.category}</p>
+                  
+                  {/* Extracted Facts inspection if present */}
+                  {file.extractedData && (
+                    <button
+                      onClick={() => setSelectedFileFact(file)}
+                      className="text-[10px] text-[#005eb1] hover:underline font-bold mt-2 flex items-center gap-1 cursor-pointer"
+                    >
+                      <Cpu className="w-3 h-3" /> Inspect Extracted Facts
+                    </button>
+                  )}
                 </div>
-              )) : <p className="text-xs text-slate-500">No files uploaded.</p>}
+              )) : <p className="text-xs text-slate-500 font-medium">No files uploaded.</p>}
             </div>
           </Card>
         </div>
 
+        {/* CENTER COLUMN: Analysis & Signals */}
         <div className="xl:col-span-6 space-y-4">
           <Card className="p-5 space-y-5">
             <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide">Resolve AI Analysis</h3>
             {investigation ? (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-left">
                     <p className="text-[10px] text-slate-500 uppercase font-black">Classification</p>
                     <p className="text-xs font-black text-[#00133a] mt-1">{investigation.classification.replaceAll('_', ' ')}</p>
                   </div>
-                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-left">
                     <p className="text-[10px] text-slate-500 uppercase font-black">Reason</p>
                     <p className="text-xs font-black text-[#00133a] mt-1">{investigation.reason.replaceAll('_', ' ')}</p>
                   </div>
-                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-left">
                     <p className="text-[10px] text-slate-500 uppercase font-black">Risk</p>
                     <p className="text-xs font-black text-[#00133a] mt-1">{investigation.riskLevel}</p>
                   </div>
-                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-left">
                     <p className="text-[10px] text-slate-500 uppercase font-black">Confidence</p>
                     <p className="text-xs font-black text-[#00133a] mt-1">{investigation.confidenceScore}%</p>
                   </div>
                 </div>
 
                 <section>
-                  <h4 className="text-xs font-black text-slate-700 uppercase mb-2">Findings</h4>
+                  <h4 className="text-xs font-black text-slate-700 uppercase mb-2">Findings Summary</h4>
                   <div className="space-y-2">
-                    {investigation.findings.map(item => <p key={item} className="text-xs bg-white border border-slate-200 rounded-lg p-3 text-slate-700">{item}</p>)}
+                    {investigation.findings.map(item => <p key={item} className="text-xs bg-white border border-slate-200 rounded-lg p-3 text-slate-700 font-semibold leading-normal">{item}</p>)}
                   </div>
                 </section>
 
                 <section>
-                  <h4 className="text-xs font-black text-slate-700 uppercase mb-2">Signals</h4>
+                  <h4 className="text-xs font-black text-slate-700 uppercase mb-2">Signals Checklist</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {investigation.signals.map(signal => (
-                      <div key={signal.label} className="text-xs border border-slate-200 rounded-lg p-3">
-                        <span className={`font-black ${signal.type === 'POSITIVE' ? 'text-emerald-700' : signal.type === 'WARNING' ? 'text-amber-700' : 'text-rose-700'}`}>{signal.type}</span>
-                        <p className="text-slate-700 mt-1">{signal.label}</p>
-                      </div>
-                    ))}
-                  </div>
-                </section>
+                    {investigation.signals.map(signal => {
+                      let typeStyle = 'bg-slate-50 text-slate-800 border-slate-200';
+                      if (signal.type === 'POSITIVE') {
+                        typeStyle = 'bg-emerald-50 text-emerald-800 border-emerald-250';
+                      } else if (signal.type === 'WARNING' || signal.type === 'NEGATIVE') {
+                        typeStyle = 'bg-rose-50 text-rose-800 border-rose-250';
+                      }
 
-                <section>
-                  <h4 className="text-xs font-black text-slate-700 uppercase mb-2">Investigation Timeline</h4>
-                  <div className="space-y-2">
-                    {investigation.workflowEvents.map(item => (
-                      <div key={item.id} className="flex items-center gap-2 text-xs text-slate-700">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        <span>{item.label}</span>
-                      </div>
-                    ))}
+                      return (
+                        <div key={signal.label} className={`text-xs border rounded-lg p-3 ${typeStyle}`}>
+                          <span className="font-black text-[9px] tracking-wider uppercase">{signal.type}</span>
+                          <p className="font-semibold mt-1 leading-normal">{signal.label}</p>
+                        </div>
+                      );
+                    })}
                   </div>
                 </section>
               </>
-            ) : <p className="text-sm text-slate-500">Manual review required. Automated investigation was not available.</p>}
+            ) : <p className="text-sm text-slate-500 font-semibold">Manual review required. Automated investigation data is not available.</p>}
           </Card>
         </div>
 
+        {/* RIGHT COLUMN: AI Recommendation & Actions */}
         <div className="xl:col-span-3 space-y-4">
           <Card className="p-5 space-y-4 border-t-4 border-t-[#016FD0]">
             <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide">AI Recommendation</h3>
@@ -917,50 +1055,211 @@ export const InvestigationWorkspace: React.FC = () => {
               <p className="text-[10px] uppercase font-black text-slate-500">Recommended Action</p>
               <p className="text-lg font-black text-[#00133a] mt-1">{investigation?.recommendedAction.replaceAll('_', ' ') || 'MANUAL REVIEW'}</p>
             </div>
-            <p className="text-xs text-slate-600 leading-relaxed">{investigation?.recommendationExplanation || 'Investigator review is required.'}</p>
+            <p className="text-xs text-slate-650 leading-relaxed font-semibold">{investigation?.recommendationExplanation || 'Investigator review is required.'}</p>
             {investigation?.missingInformation.length ? (
               <div>
                 <p className="text-[10px] uppercase font-black text-slate-500 mb-2">Missing Information</p>
                 <ul className="space-y-1">
-                  {investigation.missingInformation.map(item => <li key={item} className="text-xs text-slate-700">- {item}</li>)}
+                  {investigation.missingInformation.map(item => <li key={item} className="text-xs text-slate-700 font-bold">- {item}</li>)}
                 </ul>
               </div>
             ) : null}
 
             <div className="space-y-2 pt-2">
-              <Button className="w-full" onClick={() => investigatorAction(dispute.id, 'approve')}>Approve Recommendation</Button>
-              <Button variant="outline" className="w-full" onClick={() => investigatorAction(dispute.id, 'request-info')}>Request More Information</Button>
-              <Button variant="danger" className="w-full" onClick={() => investigatorAction(dispute.id, 'escalate')}>Escalate</Button>
-            </div>
-
-            <div className="border-t border-slate-200 pt-4 space-y-2">
-              <label className="text-[10px] uppercase font-black text-slate-500">Override Reason</label>
-              <textarea value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} rows={3} className="w-full border border-slate-200 rounded-lg p-2 text-xs" placeholder="Required for override" />
-              <Button variant="secondary" className="w-full" disabled={!overrideReason.trim()} onClick={() => investigatorAction(dispute.id, 'override', overrideReason)}>Override</Button>
+              <Button className="w-full text-xs font-extrabold uppercase py-3" onClick={() => setShowConfirmApprove(true)}>Approve Recommendation</Button>
+              <Button variant="outline" className="w-full text-xs font-extrabold uppercase py-3" onClick={() => setShowConfirmRequest(true)}>Request Info</Button>
+              <Button variant="danger" className="w-full text-xs font-extrabold uppercase py-3" onClick={() => setShowConfirmEscalate(true)}>Escalate Claim</Button>
+              <Button variant="secondary" className="w-full text-xs font-extrabold uppercase py-3 bg-slate-800 border-none hover:bg-slate-900 text-white" onClick={() => setShowConfirmOverride(true)}>Override</Button>
             </div>
           </Card>
 
+          {/* Actor Color-Coded Audit Timeline */}
           <Card className="p-5">
-            <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide mb-3">Audit Trail</h3>
-            <div className="space-y-3 max-h-72 overflow-y-auto">
-              {(dispute.auditTrail || []).map(item => (
-                <div key={item.id} className="border-l-2 border-slate-200 pl-3">
-                  <p className="text-xs font-black text-slate-800">{item.action.replaceAll('_', ' ')}</p>
-                  <p className="text-[10px] text-slate-500">{item.actorType} | {new Date(item.timestamp).toLocaleString()}</p>
-                </div>
-              ))}
+            <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide mb-4">Audit Trail</h3>
+            <div className="relative border-l-2 border-slate-200 ml-2 pl-4 space-y-4 max-h-[350px] overflow-y-auto text-xs font-semibold">
+              {(dispute.auditTrail || []).map(item => {
+                let actorStyle = 'bg-slate-100 text-slate-800 border-slate-200';
+                if (item.actorType === 'CUSTOMER') {
+                  actorStyle = 'bg-blue-50 text-blue-800 border-blue-200';
+                } else if (item.actorType === 'SYSTEM') {
+                  actorStyle = 'bg-slate-100 text-slate-800 border-slate-200';
+                } else if (item.actorType === 'AI') {
+                  actorStyle = 'bg-purple-50 text-purple-800 border-purple-200';
+                } else if (item.actorType === 'INVESTIGATOR') {
+                  actorStyle = 'bg-amber-50 text-amber-800 border-amber-200';
+                }
+
+                return (
+                  <div key={item.id} className="relative">
+                    <span className="absolute -left-[22px] top-1 w-2 h-2 rounded-full bg-slate-300 border border-white" />
+                    <div className="flex items-center justify-between gap-2.5">
+                      <span className={`px-2 py-0.5 rounded text-[8px] font-black border uppercase tracking-wider ${actorStyle}`}>
+                        {item.actorType}
+                      </span>
+                      <span className="text-[9px] text-slate-500 font-bold">
+                        {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <p className="font-extrabold text-slate-950 mt-1 leading-normal">{item.action.replaceAll('_', ' ')}</p>
+                    {item.metadata && (item.metadata.reason || item.metadata.newAction) && (
+                      <div className="bg-slate-50 border border-slate-200 rounded p-2 mt-1.5 font-medium text-[10px] text-slate-600 leading-normal">
+                        {item.metadata.newAction && <p><b>Override Target:</b> {item.metadata.newAction}</p>}
+                        {item.metadata.reason && <p><b>Reason:</b> {item.metadata.reason}</p>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </Card>
         </div>
       </div>
+
+      {/* CONFIRM APPROVE DIALOG MODAL */}
+      {showConfirmApprove && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm px-4">
+          <Card className="max-w-md w-full p-6 bg-white border border-slate-200 shadow-2xl space-y-4">
+            <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide">Approve Resolve AI Recommendation?</h3>
+            <div className="text-xs text-slate-700 space-y-2 border bg-slate-50 p-4 rounded-lg">
+              <p><b>Case ID:</b> {dispute.id}</p>
+              <p><b>Recommended Action:</b> {investigation?.recommendedAction.replaceAll('_', ' ')}</p>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setShowConfirmApprove(false)}>Cancel</Button>
+              <Button variant="primary" size="sm" onClick={async () => {
+                await investigatorAction(dispute.id, 'approve');
+                setShowConfirmApprove(false);
+              }}>Confirm</Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* CONFIRM REQUEST MORE INFO DIALOG MODAL */}
+      {showConfirmRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm px-4">
+          <Card className="max-w-md w-full p-6 bg-white border border-slate-200 shadow-2xl space-y-4">
+            <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide">Request More Information</h3>
+            <p className="text-xs text-slate-600">Enter details on what supporting documentation is required from the customer:</p>
+            <textarea
+              value={requestReason}
+              onChange={(e) => setRequestReason(e.target.value)}
+              rows={3}
+              required
+              className="w-full border border-slate-250 rounded-lg p-2.5 text-xs outline-none focus:border-[#016FD0] font-semibold text-slate-700"
+              placeholder="E.g. Cancellation confirmation email from merchant showing refund agreement..."
+            />
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setShowConfirmRequest(false)}>Cancel</Button>
+              <Button variant="primary" size="sm" disabled={!requestReason.trim()} onClick={async () => {
+                await investigatorAction(dispute.id, 'request-info', requestReason);
+                setShowConfirmRequest(false);
+                setRequestReason('');
+              }}>Confirm</Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* CONFIRM ESCALATE DIALOG MODAL */}
+      {showConfirmEscalate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm px-4">
+          <Card className="max-w-md w-full p-6 bg-white border border-slate-200 shadow-2xl space-y-4">
+            <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide">Escalate Case</h3>
+            <p className="text-xs text-slate-600">Provide a reason for escalating this case to senior review:</p>
+            <textarea
+              value={escalateReason}
+              onChange={(e) => setEscalateReason(e.target.value)}
+              rows={3}
+              required
+              className="w-full border border-slate-250 rounded-lg p-2.5 text-xs outline-none focus:border-[#016FD0] font-semibold text-slate-700"
+              placeholder="E.g. Large dollar claim with conflicting merchant records..."
+            />
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setShowConfirmEscalate(false)}>Cancel</Button>
+              <Button variant="danger" size="sm" disabled={!escalateReason.trim()} onClick={async () => {
+                await investigatorAction(dispute.id, 'escalate', escalateReason);
+                setShowConfirmEscalate(false);
+                setEscalateReason('');
+              }}>Confirm</Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* CONFIRM OVERRIDE DIALOG MODAL */}
+      {showConfirmOverride && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm px-4">
+          <Card className="max-w-md w-full p-6 bg-white border border-slate-200 shadow-2xl space-y-4">
+            <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide">Override Resolve AI Recommendation</h3>
+            <div className="text-xs text-slate-700 space-y-2 border bg-slate-50 p-4 rounded-lg">
+              <p><b>AI Recommendation:</b> {investigation?.recommendedAction.replaceAll('_', ' ')}</p>
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-[10px] uppercase font-black text-slate-500">New Action</label>
+              <select
+                value={overrideTargetAction}
+                onChange={(e) => setOverrideTargetAction(e.target.value)}
+                className="w-full border border-slate-250 bg-white rounded-lg p-2 text-xs outline-none font-bold text-slate-700"
+              >
+                <option value="APPROVE">APPROVE</option>
+                <option value="REQUEST_CUSTOMER_INFO">REQUEST CUSTOMER INFO</option>
+                <option value="REQUEST_MERCHANT_EVIDENCE">REQUEST MERCHANT EVIDENCE</option>
+                <option value="ESCALATE">ESCALATE</option>
+                <option value="MANUAL_REVIEW">MANUAL REVIEW</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] uppercase font-black text-slate-500">Reason</label>
+              <textarea
+                value={overrideReason}
+                onChange={(e) => setOverrideReason(e.target.value)}
+                rows={3}
+                required
+                className="w-full border border-slate-250 rounded-lg p-2 text-xs outline-none focus:border-[#016FD0] font-semibold text-slate-700"
+                placeholder="Override reason is required"
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setShowConfirmOverride(false)}>Cancel</Button>
+              <Button variant="secondary" size="sm" disabled={!overrideReason.trim()} onClick={async () => {
+                await investigatorAction(dispute.id, 'override', overrideReason, overrideTargetAction);
+                setShowConfirmOverride(false);
+                setOverrideReason('');
+              }}>Confirm</Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* EVIDENCE EXTRACTED FACTS MODAL */}
+      {selectedFileFact && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm px-4">
+          <Card className="max-w-md w-full p-6 bg-white border border-slate-200 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+              <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide flex items-center gap-1.5"><Cpu className="w-4 h-4 text-[#016FD0]" /> Extracted File Facts</h3>
+              <button className="text-xs text-slate-400 hover:text-slate-700 cursor-pointer" onClick={() => setSelectedFileFact(null)}>Close</button>
+            </div>
+            <div className="text-xs text-slate-700 space-y-3 bg-slate-50 p-4 rounded-lg max-h-64 overflow-y-auto font-mono">
+              <p><b>Filename:</b> {selectedFileFact.name}</p>
+              <p><b>Category:</b> {selectedFileFact.category}</p>
+              <p><b>Extracted Data:</b></p>
+              <pre className="p-2.5 bg-slate-900 text-slate-100 rounded text-[10px] overflow-x-auto">
+                {JSON.stringify(JSON.parse(selectedFileFact.extractedData || '{}'), null, 2)}
+              </pre>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };
 
 // ==========================================
 // 7. NOTIFICATIONS PAGE
-// ==========================================
-
 export const Notifications: React.FC = () => {
   const { notifications, markNotificationAsRead, markAllNotificationsAsRead, setCurrentPage, setActiveDisputeId } = useDisputes();
 
@@ -1087,9 +1386,23 @@ export const Appeal: React.FC = () => {
 // ==========================================
 
 export const Settings: React.FC = () => {
-  const handleReset = () => {
-    if (confirm("Reset simulation database to initial starting states?")) {
-      window.location.reload();
+  const { logout, customerName } = useDisputes();
+  const handleReset = async () => {
+    if (confirm("Reset simulation database to initial starting states? This will sign you out and reload fresh data.")) {
+      try {
+        const res = await fetch('http://127.0.0.1:4000/api/admin/reset', {
+          method: 'POST'
+        });
+        const data = await res.json();
+        if (data.ok) {
+          alert('Demo database successfully re-seeded!');
+          logout();
+        } else {
+          alert('Failed to reset database: ' + data.error);
+        }
+      } catch (e: any) {
+        alert('Error connecting to reset API: ' + e.message);
+      }
     }
   };
 
@@ -1109,7 +1422,7 @@ export const Settings: React.FC = () => {
 
         <div className="md:col-span-2 space-y-6 text-xs font-semibold">
           <Card className="p-5 space-y-4">
-            <h4 className="text-sm font-bold text-slate-950 border-b border-slate-200 pb-3">David K. — Member Since 2018</h4>
+            <h4 className="text-sm font-bold text-slate-950 border-b border-slate-200 pb-3">{customerName} — Member Since 2018</h4>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <span className="text-[10px] text-slate-500 font-extrabold block uppercase tracking-wider mb-1">Card Tier</span>

@@ -15,6 +15,6 @@ if (existsSync(envPath)) {
 
 export const config = {
   port: Number(process.env.PORT || 4000),
-  corsOrigin: process.env.CORS_ORIGIN || 'http://127.0.0.1:5173',
+  corsOrigin: process.env.CORS_ORIGIN || '*',
   openaiApiKey: process.env.OPENAI_API_KEY || ''
 };

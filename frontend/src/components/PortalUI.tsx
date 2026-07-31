@@ -2,7 +2,8 @@ import React, { useState, useRef } from 'react';
 import { useDisputes, type DisputeFile } from '../context/DisputeContext';
 import { 
   LayoutDashboard, CreditCard, PlusCircle, History, Bell, Settings, 
-  Menu, X, Upload, FileText, Trash2, Eye, CheckCircle2, Plus, LogOut, BriefcaseBusiness
+  Menu, X, Upload, FileText, Trash2, Eye, CheckCircle2, Plus, LogOut, BriefcaseBusiness,
+  Cpu, AlertTriangle
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -224,19 +225,42 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ files, onAddFiles, onRem
 // --- APP LAYOUT (HEADER, SIDEBAR, UTILITIES) ---
 
 export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentPage, setCurrentPage, notifications, logout } = useDisputes();
+  const { currentPage, setCurrentPage, notifications, logout, currentRole, investigatorFilter, setInvestigatorFilter, customerName } = useDisputes();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  const navItems = [
+  const navItems = currentRole === 'investigator' ? [
+    { id: 'investigator-overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'investigator-queue', label: 'Case Queue', icon: BriefcaseBusiness },
+    { id: 'investigator-ai', label: 'AI Investigations', icon: Cpu },
+    { id: 'investigator-escalations', label: 'Escalations', icon: AlertTriangle },
+    { id: 'investigator-audit', label: 'Audit Log', icon: History },
+  ] : [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'transactions', label: 'Transactions', icon: CreditCard },
     { id: 'raise-dispute', label: 'Raise Dispute', icon: PlusCircle },
     { id: 'my-disputes', label: 'My Disputes', icon: History },
-    { id: 'investigator', label: 'Investigator', icon: BriefcaseBusiness },
     { id: 'notifications', label: 'Notifications', icon: Bell, badge: unreadCount > 0 ? unreadCount : undefined },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
+
+  const handleNavClick = (id: string) => {
+    if (id === 'investigator-overview' || id === 'investigator-queue') {
+      setInvestigatorFilter('All');
+      setCurrentPage('investigator');
+    } else if (id === 'investigator-ai') {
+      setInvestigatorFilter('AI Ready');
+      setCurrentPage('investigator');
+    } else if (id === 'investigator-escalations') {
+      setInvestigatorFilter('Escalated');
+      setCurrentPage('investigator');
+    } else if (id === 'investigator-audit') {
+      setInvestigatorFilter('Under Review');
+      setCurrentPage('investigator');
+    } else {
+      setCurrentPage(id);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#f4f7fb] flex flex-col font-sans text-slate-800">
@@ -244,14 +268,16 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
         <div className="flex items-center gap-3">
           <button onClick={() => setMobileMenuOpen(true)} className="md:hidden p-2 text-slate-600 hover:text-slate-950 hover:bg-slate-100 rounded-lg cursor-pointer"><Menu className="w-5.5 h-5.5" /></button>
           
-          <div onClick={() => setCurrentPage('dashboard')} className="flex items-center gap-3 cursor-pointer select-none group">
+          <div onClick={() => handleNavClick(currentRole === 'investigator' ? 'investigator-overview' : 'dashboard')} className="flex items-center gap-3 cursor-pointer select-none group">
             <div className="w-9 h-9 bg-[#016FD0] flex flex-col justify-between p-1.5 rounded border border-[#005eb8]">
               <span className="text-[5px] font-black text-white leading-none tracking-widest">AMER</span>
               <span className="text-[5px] font-black text-white leading-none text-right tracking-widest self-end">EXPR</span>
             </div>
             <div className="flex flex-col">
               <span className="hidden sm:inline text-xs font-black text-slate-950 tracking-[0.15em] uppercase">AMERICAN EXPRESS</span>
-              <span className="hidden sm:inline text-[9px] font-bold text-slate-500 leading-none">Dispute Resolution Portal</span>
+              <span className="hidden sm:inline text-[9px] font-bold text-slate-500 leading-none">
+                {currentRole === 'investigator' ? 'Resolve AI Agent Workspace' : 'Dispute Resolution Portal'}
+              </span>
             </div>
           </div>
         </div>
@@ -264,15 +290,17 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
             <LogOut className="w-3.5 h-3.5" />
             <span>Sign Out</span>
           </button>
-          <button className="p-2 text-slate-500 hover:text-slate-950 hover:bg-slate-100 rounded-full cursor-pointer relative" onClick={() => setCurrentPage('notifications')}>
+          <button className="p-2 text-slate-500 hover:text-slate-950 hover:bg-slate-100 rounded-full cursor-pointer relative" onClick={() => setCurrentPage(currentRole === 'investigator' ? 'investigator' : 'notifications')}>
             <Bell className="w-5 h-5" />
             {unreadCount > 0 && <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-[#EF4444] rounded-full ring-2 ring-white" />}
           </button>
           <div className="flex items-center gap-2.5 border-l border-slate-200 pl-4">
-            <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-300 flex items-center justify-center font-black text-xs text-slate-700">
-              DK
+            <div className="w-8 h-8 rounded-full bg-[#016FD0] border border-[#005eb8] flex items-center justify-center font-black text-xs text-white">
+              {currentRole === 'investigator' ? 'INV' : customerName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
             </div>
-            <span className="hidden md:inline text-xs font-bold text-slate-700">David K.</span>
+            <span className="hidden md:inline text-xs font-bold text-slate-700">
+              {currentRole === 'investigator' ? 'Amex Investigator' : customerName}
+            </span>
           </div>
         </div>
       </header>
@@ -282,9 +310,21 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
           <nav className="space-y-1">
             {navItems.map(item => {
               const Icon = item.icon;
-              const active = currentPage === item.id || (item.id === 'my-disputes' && currentPage === 'appeal');
+              let active = currentPage === item.id || (item.id === 'my-disputes' && currentPage === 'appeal');
+              if (currentRole === 'investigator') {
+                if (item.id === 'investigator-overview' || item.id === 'investigator-queue') {
+                  active = currentPage === 'investigator' && investigatorFilter === 'All';
+                } else if (item.id === 'investigator-ai') {
+                  active = currentPage === 'investigator' && investigatorFilter === 'AI Ready';
+                } else if (item.id === 'investigator-escalations') {
+                  active = currentPage === 'investigator' && investigatorFilter === 'Escalated';
+                } else if (item.id === 'investigator-audit') {
+                  active = currentPage === 'investigator' && investigatorFilter === 'Under Review';
+                }
+              }
+
               return (
-                <button key={item.id} onClick={() => setCurrentPage(item.id)}
+                <button key={item.id} onClick={() => handleNavClick(item.id)}
                   className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${
                     active 
                       ? 'bg-[#eaf4ff] text-[#005eb8] border-l-3 border-l-[#016FD0] pl-2.5' 
@@ -331,9 +371,21 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
               <nav className="space-y-1.5 flex-1">
                 {navItems.map(item => {
                   const Icon = item.icon;
-                  const active = currentPage === item.id;
+                  let active = currentPage === item.id;
+                  if (currentRole === 'investigator') {
+                    if (item.id === 'investigator-overview' || item.id === 'investigator-queue') {
+                      active = currentPage === 'investigator' && investigatorFilter === 'All';
+                    } else if (item.id === 'investigator-ai') {
+                      active = currentPage === 'investigator' && investigatorFilter === 'AI Ready';
+                    } else if (item.id === 'investigator-escalations') {
+                      active = currentPage === 'investigator' && investigatorFilter === 'Escalated';
+                    } else if (item.id === 'investigator-audit') {
+                      active = currentPage === 'investigator' && investigatorFilter === 'Under Review';
+                    }
+                  }
+
                   return (
-                    <button key={item.id} onClick={() => { setCurrentPage(item.id); setMobileMenuOpen(false); }}
+                    <button key={item.id} onClick={() => { handleNavClick(item.id); setMobileMenuOpen(false); }}
                       className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold cursor-pointer ${
                         active 
                           ? 'bg-[#016FD0]/20 text-[#38BDF8] border-l-3 border-l-[#016FD0] pl-2' 
