@@ -117,6 +117,8 @@ const server = http.createServer(async (req, res) => {
         expectedResolution: disputeRecord.expectedResolution,
         questionnaire: JSON.parse(disputeRecord.questionnaire),
         investigation: invResult ? {
+          caseId: invResult.caseId,
+          classification: invResult.classification,
           findings: JSON.parse(invResult.findings),
           missingInformation: JSON.parse(invResult.missingInformation),
           recommendedAction: invResult.recommendedAction,
