@@ -5,7 +5,7 @@ import { Eye, EyeOff, Lock, Mail, Shield, Loader2 } from 'lucide-react';
 import { Button, Card } from './PortalUI';
 
 export const Login: React.FC = () => {
-  const { login } = useDisputes();
+  const { login, showToast } = useDisputes();
   const [email, setEmail] = useState('david.k@amex.com');
   const [password, setPassword] = useState('password123');
   const [showPassword, setShowPassword] = useState(false);
@@ -21,17 +21,23 @@ export const Login: React.FC = () => {
     setError(null);
 
     if (!email.trim()) {
-      setError('Please enter your cardmember email address.');
+      const msg = 'Please enter your cardmember email address.';
+      setError(msg);
+      showToast(msg, 'error');
       return;
     }
 
     if (!validateEmail(email)) {
-      setError('Please enter a valid cardmember email address.');
+      const msg = 'Please enter a valid cardmember email address.';
+      setError(msg);
+      showToast(msg, 'error');
       return;
     }
 
     if (!password.trim()) {
-      setError('Please enter your account password.');
+      const msg = 'Please enter your account password.';
+      setError(msg);
+      showToast(msg, 'error');
       return;
     }
 
@@ -39,11 +45,15 @@ export const Login: React.FC = () => {
     try {
       const signedIn = await login(email, password);
       if (!signedIn) {
-        setError('Use david.k@amex.com with password123 to access this demo.');
+        const msg = 'Authentication failed. Use david.k@amex.com with password123 to access this demo.';
+        setError(msg);
+        showToast(msg, 'error');
         setIsLoading(false);
       }
     } catch (err) {
-      setError('Authentication failed. Please verify credentials.');
+      const msg = 'Authentication failed. Please verify credentials.';
+      setError(msg);
+      showToast(msg, 'error');
       setIsLoading(false);
     }
   };

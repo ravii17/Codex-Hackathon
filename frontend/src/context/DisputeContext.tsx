@@ -76,6 +76,8 @@ interface DisputeContextType {
   customerName: string;
   setCustomerId: (id: string) => void;
   setCustomerName: (name: string) => void;
+  toast: { message: string; type: 'success' | 'error' | 'warning' } | null;
+  showToast: (message: string | null, type?: 'success' | 'error' | 'warning') => void;
 }
 
 const DisputeContext = createContext<DisputeContextType | undefined>(undefined);
@@ -111,6 +113,24 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => hasSavedSession());
   const [currentRole, setCurrentRole] = useState<string>('cardmember');
   const [investigatorFilter, setInvestigatorFilter] = useState<string>('All');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' } | null>(null);
+
+  const showToast = (message: string | null, type: 'success' | 'error' | 'warning' = 'error') => {
+    if (message === null) {
+      setToast(null);
+    } else {
+      setToast({ message, type });
+    }
+  };
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => {
+        setToast(null);
+      }, 5500);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   // Load backend data helper
   const [customerId, setCustomerId] = useState<string>(() => {
@@ -422,7 +442,9 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
         customerId,
         customerName,
         setCustomerId,
-        setCustomerName
+        setCustomerName,
+        toast,
+        showToast
       }}
     >
       {children}

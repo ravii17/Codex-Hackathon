@@ -292,7 +292,7 @@ export const Transactions: React.FC = () => {
 // ==========================================
 
 export const DisputeWizard: React.FC = () => {
-  const { selectedTransactionForDispute, setSelectedTransactionForDispute, setCurrentPage, createDispute, setActiveDisputeId, disputes } = useDisputes();
+  const { selectedTransactionForDispute, setSelectedTransactionForDispute, setCurrentPage, createDispute, setActiveDisputeId, disputes, showToast } = useDisputes();
   const [step, setStep] = useState(1);
   const [submittedCaseId, setSubmittedCaseId] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -316,6 +316,28 @@ export const DisputeWizard: React.FC = () => {
 
   const handleNext = () => setStep(prev => Math.min(5, prev + 1));
   const handleBack = () => setStep(prev => Math.max(1, prev - 1));
+
+  const handleStepNext = () => {
+    if (step === 2 && !reason) {
+      showToast('Please select a dispute classification/reason to proceed.', 'error');
+      return;
+    }
+    if (step === 3) {
+      if (!contacted) {
+        showToast('Please specify whether you tried contacting the merchant.', 'error');
+        return;
+      }
+      if (!notes.trim()) {
+        showToast('Justification notes are required.', 'error');
+        return;
+      }
+      if (notes.trim().length < 10) {
+        showToast('Justification notes must be at least 10 characters long.', 'error');
+        return;
+      }
+    }
+    handleNext();
+  };
 
   const handleAddFiles = (newFiles: any[]) => {
     setFiles(prev => [...prev, ...newFiles.map((f, i) => ({ id: `f-${Date.now()}-${i}`, ...f }))]);
@@ -342,11 +364,14 @@ export const DisputeWizard: React.FC = () => {
       setSubmittedCaseId(caseId);
     } catch (err: any) {
       console.error('Submission failed in UI:', err);
+      let errMsg = '';
       if (err.message.includes('already disputed') || err.message.includes('already been submitted')) {
-        setSubmitError('A dispute has already been submitted for this transaction.');
+        errMsg = 'A dispute has already been submitted for this transaction.';
       } else {
-        setSubmitError(err.message || 'An unexpected error occurred during submission.');
+        errMsg = err.message || 'An unexpected error occurred during submission.';
       }
+      setSubmitError(errMsg);
+      showToast(errMsg, 'error');
     }
   };
 
@@ -568,7 +593,7 @@ export const DisputeWizard: React.FC = () => {
           <div className="flex justify-between pt-6 border-t border-slate-200">
             <Button variant="outline" size="sm" onClick={handleBack} disabled={step === 1}>Back</Button>
             {step < 5 ? (
-              <Button variant="primary" size="sm" onClick={handleNext} disabled={step === 2 && !reason}>Next</Button>
+              <Button variant="primary" size="sm" onClick={handleStepNext}>Next</Button>
             ) : (
               <Button variant="secondary" size="sm" onClick={handleSubmit} className="gap-1.5"><Lock className="w-3.5 h-3.5" /> Submit Case</Button>
             )}
@@ -948,7 +973,7 @@ export const InvestigatorDashboard: React.FC = () => {
 // ==========================================
 
 export const InvestigationWorkspace: React.FC = () => {
-  const { disputes, activeDisputeId, investigatorAction, setCurrentPage } = useDisputes();
+  const { disputes, activeDisputeId, investigatorAction, setCurrentPage, showToast } = useDisputes();
   const dispute = disputes.find(d => d.id === activeDisputeId) || disputes[0];
 
   const [showConfirmApprove, setShowConfirmApprove] = useState(false);
@@ -1196,7 +1221,11 @@ export const InvestigationWorkspace: React.FC = () => {
             />
             <div className="flex justify-end gap-3 pt-2">
               <Button variant="outline" size="sm" onClick={() => setShowConfirmRequest(false)}>Cancel</Button>
-              <Button variant="primary" size="sm" disabled={!requestReason.trim()} onClick={async () => {
+              <Button variant="primary" size="sm" onClick={async () => {
+                if (!requestReason.trim()) {
+                  showToast('Please specify what information or proof is required from the customer.', 'error');
+                  return;
+                }
                 await investigatorAction(dispute.id, 'request-info', requestReason);
                 setShowConfirmRequest(false);
                 setRequestReason('');
@@ -1222,7 +1251,11 @@ export const InvestigationWorkspace: React.FC = () => {
             />
             <div className="flex justify-end gap-3 pt-2">
               <Button variant="outline" size="sm" onClick={() => setShowConfirmEscalate(false)}>Cancel</Button>
-              <Button variant="danger" size="sm" disabled={!escalateReason.trim()} onClick={async () => {
+              <Button variant="danger" size="sm" onClick={async () => {
+                if (!escalateReason.trim()) {
+                  showToast('Please specify an escalation reason.', 'error');
+                  return;
+                }
                 await investigatorAction(dispute.id, 'escalate', escalateReason);
                 setShowConfirmEscalate(false);
                 setEscalateReason('');
@@ -1270,7 +1303,11 @@ export const InvestigationWorkspace: React.FC = () => {
 
             <div className="flex justify-end gap-3 pt-2">
               <Button variant="outline" size="sm" onClick={() => setShowConfirmOverride(false)}>Cancel</Button>
-              <Button variant="secondary" size="sm" disabled={!overrideReason.trim()} onClick={async () => {
+              <Button variant="secondary" size="sm" onClick={async () => {
+                if (!overrideReason.trim()) {
+                  showToast('Override reason is required.', 'error');
+                  return;
+                }
                 await investigatorAction(dispute.id, 'override', overrideReason, overrideTargetAction);
                 setShowConfirmOverride(false);
                 setOverrideReason('');
@@ -1352,7 +1389,7 @@ export const Notifications: React.FC = () => {
 // ==========================================
 
 export const Appeal: React.FC = () => {
-  const { disputes, activeDisputeId, submitAppeal, setCurrentPage } = useDisputes();
+  const { disputes, activeDisputeId, submitAppeal, setCurrentPage, showToast } = useDisputes();
   const dispute = disputes.find(d => d.id === activeDisputeId && d.status === 'Rejected') || disputes.find(d => d.status === 'Rejected');
 
   const [notes, setNotes] = useState('');
@@ -1372,11 +1409,23 @@ export const Appeal: React.FC = () => {
     setFiles(prev => [...prev, { name: 'damaged_product_photo.jpg', size: '1.8 MB' }]);
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!notes.trim()) return;
-    submitAppeal(dispute.id, notes, files);
-    setCurrentPage('my-disputes');
+    if (!notes.trim()) {
+      showToast('Appeal justification notes cannot be empty.', 'error');
+      return;
+    }
+    if (notes.trim().length < 15) {
+      showToast('Please provide a detailed explanation of your appeal (minimum 15 characters).', 'error');
+      return;
+    }
+    try {
+      await submitAppeal(dispute.id, notes, files);
+      showToast('Appeal filed successfully for review.', 'success');
+      setCurrentPage('my-disputes');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to submit appeal.', 'error');
+    }
   };
 
   return (
@@ -1418,7 +1467,7 @@ export const Appeal: React.FC = () => {
 
           <div className="flex justify-end gap-3.5 pt-4 border-t border-slate-200">
             <Button type="button" variant="outline" onClick={() => setCurrentPage('my-disputes')}>Cancel</Button>
-            <Button type="submit" variant="secondary" disabled={!notes.trim()} className="gap-1.5"><Lock className="w-3.5 h-3.5" /> Submit Appeal File</Button>
+            <Button type="submit" variant="secondary" className="gap-1.5"><Lock className="w-3.5 h-3.5" /> Submit Appeal File</Button>
           </div>
         </form>
       </Card>
@@ -1431,7 +1480,7 @@ export const Appeal: React.FC = () => {
 // ==========================================
 
 export const Settings: React.FC = () => {
-  const { logout, customerName } = useDisputes();
+  const { logout, customerName, showToast } = useDisputes();
   const handleReset = async () => {
     if (confirm("Reset simulation database to initial starting states? This will sign you out and reload fresh data.")) {
       try {
@@ -1440,13 +1489,13 @@ export const Settings: React.FC = () => {
         });
         const data = await res.json();
         if (data.ok) {
-          alert('Demo database successfully re-seeded!');
+          showToast('Demo database successfully re-seeded!', 'success');
           logout();
         } else {
-          alert('Failed to reset database: ' + data.error);
+          showToast('Failed to reset database: ' + data.error, 'error');
         }
       } catch (e: any) {
-        alert('Error connecting to reset API: ' + e.message);
+        showToast('Error connecting to reset API: ' + e.message, 'error');
       }
     }
   };
