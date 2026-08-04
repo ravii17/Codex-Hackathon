@@ -14,6 +14,7 @@ import {
 } from './components/PortalPages';
 import { Login } from './components/Login';
 import { ToastNotification } from './components/ToastNotification';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { motion, AnimatePresence } from 'framer-motion';
 import './App.css';
 
@@ -58,7 +59,9 @@ const AppContent: React.FC = () => {
             transition={{ duration: 0.3 }}
             className="w-full"
           >
-            <Login />
+            <ErrorBoundary>
+              <Login />
+            </ErrorBoundary>
           </motion.div>
         </AnimatePresence>
       ) : (
@@ -72,7 +75,9 @@ const AppContent: React.FC = () => {
               transition={{ duration: 0.2 }}
               className="w-full"
             >
-              {renderPage()}
+              <ErrorBoundary>
+                {renderPage()}
+              </ErrorBoundary>
             </motion.div>
           </AnimatePresence>
         </AppLayout>
@@ -83,9 +88,11 @@ const AppContent: React.FC = () => {
 
 function App() {
   return (
-    <DisputeProvider>
-      <AppContent />
-    </DisputeProvider>
+    <ErrorBoundary>
+      <DisputeProvider>
+        <AppContent />
+      </DisputeProvider>
+    </ErrorBoundary>
   );
 }
 

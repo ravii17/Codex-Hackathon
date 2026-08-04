@@ -158,10 +158,19 @@ export const Login: React.FC = () => {
 
             <div className="flex justify-between items-center text-[10px] text-slate-600 font-bold select-none pt-1">
               <label className="flex items-center gap-2 cursor-pointer hover:text-slate-900 transition-colors">
-                <input type="checkbox" defaultChecked className="rounded border-slate-300 bg-white text-[#016FD0] focus:ring-[#016FD0] w-3.5 h-3.5 accent-[#016FD0]" />
+                <input 
+                  type="checkbox" 
+                  defaultChecked 
+                  disabled={isLoading}
+                  className="rounded border-slate-300 bg-white text-[#016FD0] focus:ring-[#016FD0] w-3.5 h-3.5 accent-[#016FD0] disabled:opacity-50" 
+                />
                 Remember Me
               </label>
-              <button type="button" className="hover:text-[#016FD0] hover:underline transition-colors cursor-pointer">
+              <button 
+                type="button" 
+                disabled={isLoading}
+                className="hover:text-[#016FD0] hover:underline transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 Forgot password?
               </button>
             </div>

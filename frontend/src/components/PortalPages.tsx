@@ -1,11 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useDisputes, type Transaction } from '../context/DisputeContext';
-import { Card, Button, StatusChip, UploadZone } from './PortalUI';
+import { useDisputes, type Transaction, type Dispute } from '../context/DisputeContext';
+import { Card, Button, StatusChip, UploadZone, TableSkeleton, DashboardSkeleton, TimelineSkeleton, WorkspaceSkeleton, EmptyState, ErrorCard } from './PortalUI';
 import { 
   Search, ArrowRight, ArrowLeft, CheckCircle2, ChevronRight, 
   Scale, AlertCircle, Lock, RotateCcw, Database, Upload,
   Hotel, Laptop, Coffee, Car, CreditCard, ShieldCheck,
-  Cpu
+  Cpu, Loader2, BriefcaseBusiness
 } from 'lucide-react';
 
 // ==========================================
@@ -17,12 +17,81 @@ const cleanLabel = (value?: string, fallback: string = 'Unknown') => {
   return value.replaceAll('_', ' ');
 };
 
+export const AIInvestigationCard: React.FC<{ dispute: Dispute }> = ({ dispute: _dispute }) => {
+  const [step, setStep] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setStep(prev => Math.min(5, prev + 1));
+    }, 1200);
+    return () => clearInterval(interval);
+  }, []);
+
+  const steps = [
+    { text: 'Reading customer statement', detail: 'Analyzing text sentiment and claim reason' },
+    { text: 'Retrieving transaction history', detail: 'Querying ledger database for matching records' },
+    { text: 'Reviewing evidence', detail: 'Validating cancelation emails and receipts' },
+    { text: 'Calculating risk', detail: 'Evaluating fraud risk and duplicate indicators' },
+    { text: 'Generating recommendation', detail: 'Formulating resolution proposal for reviewers' }
+  ];
+
+  return (
+    <Card className="p-6 border border-[#016FD0]/30 bg-gradient-to-br from-white to-[#eaf4ff]/30 shadow-md space-y-6 relative overflow-hidden bg-white">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-[#016FD0]/5 rounded-full filter blur-xl animate-pulse pointer-events-none" />
+      
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-[#016FD0]/10 flex items-center justify-center border border-[#016FD0]/20 shrink-0">
+          <Cpu className="w-5 h-5 text-[#016FD0] animate-spin-slow" />
+        </div>
+        <div className="text-left">
+          <h4 className="text-xs font-black text-[#00133a] uppercase tracking-wider flex items-center gap-1.5">
+            🤖 ResolveAI Agent Active
+          </h4>
+          <p className="text-[10px] font-bold text-slate-500">Conducting automated audit investigation</p>
+        </div>
+      </div>
+      
+      <div className="space-y-4 pt-1 text-xs">
+        {steps.map((item, index) => {
+          const isDone = step > index;
+          const isActive = step === index;
+          return (
+            <div key={item.text} className="flex items-start gap-3">
+              {isDone ? (
+                <div className="w-4.5 h-4.5 rounded-full bg-emerald-50 text-[#10B981] flex items-center justify-center border border-emerald-100 shrink-0 mt-0.5">
+                  <CheckCircle2 className="w-3 h-3" />
+                </div>
+              ) : isActive ? (
+                <div className="w-4.5 h-4.5 flex items-center justify-center shrink-0 mt-0.5">
+                  <Loader2 className="w-3.5 h-3.5 text-[#016FD0] animate-spin" />
+                </div>
+              ) : (
+                <div className="w-4.5 h-4.5 rounded-full border border-slate-200 shrink-0 mt-0.5" />
+              )}
+              <div className="text-left">
+                <p className={`font-bold ${isDone ? 'text-slate-500 font-medium' : isActive ? 'text-slate-900 font-black' : 'text-slate-400'}`}>
+                  {item.text}
+                </p>
+                {isActive && (
+                  <p className="text-[10px] text-slate-400 mt-0.5 leading-normal animate-pulse">
+                    {item.detail}
+                  </p>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+};
+
 // ==========================================
 // 1. DASHBOARD PAGE
 // ==========================================
 
 export const Dashboard: React.FC = () => {
-  const { setCurrentPage, disputes, transactions, setActiveDisputeId, setSelectedTransactionForDispute } = useDisputes();
+  const { setCurrentPage, disputes, transactions, setActiveDisputeId, setSelectedTransactionForDispute, isLoadingData, fetchError, refetchAllData } = useDisputes();
 
   const stats = {
     active: disputes.filter(d => !['Resolved', 'Rejected'].includes(d.status)).length,
@@ -34,6 +103,9 @@ export const Dashboard: React.FC = () => {
     setActiveDisputeId(id);
     setCurrentPage('my-disputes');
   };
+
+  if (isLoadingData) return <DashboardSkeleton />;
+  if (fetchError) return <div className="py-12"><ErrorCard message={fetchError} onRetry={refetchAllData} /></div>;
 
   const featuredTransaction = transactions.find(t => t.disputeEligible) || transactions[0];
   const activityIcons = [Hotel, Laptop, Coffee, Car, CreditCard];
@@ -156,7 +228,7 @@ export const Dashboard: React.FC = () => {
         </Button>
       </section>
 
-      {disputes.length > 0 && (
+      {disputes.length > 0 ? (
         <Card className="p-0 overflow-hidden rounded-xl">
           <div className="p-5 border-b border-slate-200 flex items-center justify-between">
             <div>
@@ -180,6 +252,13 @@ export const Dashboard: React.FC = () => {
             ))}
           </div>
         </Card>
+      ) : (
+        <EmptyState 
+          title="No disputes submitted yet" 
+          description="Select an eligible transaction from your statements history to file an active dispute claim."
+          actionLabel="View Transactions"
+          onAction={() => setCurrentPage('transactions')}
+        />
       )}
     </div>
   );
@@ -189,12 +268,15 @@ export const Dashboard: React.FC = () => {
 // ==========================================
 
 export const Transactions: React.FC = () => {
-  const { transactions, disputes, setCurrentPage, setSelectedTransactionForDispute, setActiveDisputeId } = useDisputes();
+  const { transactions, disputes, setCurrentPage, setSelectedTransactionForDispute, setActiveDisputeId, isLoadingData, fetchError, refetchAllData } = useDisputes();
   const [search, setSearch] = useState('');
 
   const filtered = useMemo(() => {
     return transactions.filter(t => t.merchant.toLowerCase().includes(search.toLowerCase()));
   }, [transactions, search]);
+
+  if (isLoadingData) return <TableSkeleton />;
+  if (fetchError) return <div className="py-12"><ErrorCard message={fetchError} onRetry={refetchAllData} /></div>;
 
   const isTxDisputed = (txId: string) => {
     return disputes.some(d => d.transaction.id === txId) || transactions.find(t => t.id === txId)?.status === 'Disputed';
@@ -246,7 +328,17 @@ export const Transactions: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 font-semibold text-slate-800">
-              {filtered.map(tx => {
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-12 bg-white">
+                    <EmptyState 
+                      icon={<Search className="w-6 h-6 text-slate-400" />}
+                      title="No transactions found" 
+                      description="Try adjusting your search query or check back later." 
+                    />
+                  </td>
+                </tr>
+              ) : filtered.map(tx => {
                 const disputed = isTxDisputed(tx.id);
                 const dispId = getDisputeIdForTx(tx.id);
                 return (
@@ -296,6 +388,7 @@ export const DisputeWizard: React.FC = () => {
   const [step, setStep] = useState(1);
   const [submittedCaseId, setSubmittedCaseId] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form States
   const [reason, setReason] = useState('');
@@ -350,6 +443,7 @@ export const DisputeWizard: React.FC = () => {
   const handleSubmit = async () => {
     if (!selectedTransactionForDispute) return;
     setSubmitError(null);
+    setIsSubmitting(true);
     const codes: Record<string, string> = { 'Unauthorized Transaction': '4554', 'Item Not Received': '4512', 'Charged Twice': '4540', 'Defective Product': '4555' };
     try {
       const caseId = await createDispute({
@@ -362,16 +456,19 @@ export const DisputeWizard: React.FC = () => {
         completenessScore: 82
       });
       setSubmittedCaseId(caseId);
+      showToast('Dispute submitted successfully.', 'success');
     } catch (err: any) {
       console.error('Submission failed in UI:', err);
       let errMsg = '';
       if (err.message.includes('already disputed') || err.message.includes('already been submitted')) {
-        errMsg = 'A dispute has already been submitted for this transaction.';
+        errMsg = 'This transaction already has an active dispute.';
       } else {
         errMsg = err.message || 'An unexpected error occurred during submission.';
       }
       setSubmitError(errMsg);
       showToast(errMsg, 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -529,7 +626,7 @@ export const DisputeWizard: React.FC = () => {
               <h3 className="text-sm font-bold text-slate-950 uppercase tracking-wide">Step 3: Details Questionnaire</h3>
               <div className="space-y-4 text-xs">
                 <div>
-                  <label className="font-black text-slate-700 block mb-2 uppercase tracking-wide">Did you try contacting the merchant?</label>
+                  <label className="font-black text-slate-700 block mb-2 uppercase tracking-wide">Did you try contacting the merchant? <span className="text-rose-500 font-bold">*</span></label>
                   <div className="flex gap-2">
                     {['Yes', 'No'].map(v => (
                       <button key={v} type="button" onClick={() => setContacted(v)}
@@ -542,7 +639,7 @@ export const DisputeWizard: React.FC = () => {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="font-black text-slate-700 block uppercase tracking-wide">Additional justification notes</label>
+                  <label className="font-black text-slate-700 block uppercase tracking-wide">Additional justification notes <span className="text-rose-500 font-bold">*</span></label>
                   <textarea rows={3} placeholder="Please provide specific transaction details..." value={notes} onChange={(e) => setNotes(e.target.value)}
                     className="border border-slate-200 rounded-xl bg-white p-3 text-xs outline-none focus:border-[#016FD0] focus:ring-1 focus:ring-[#016FD0]/50 w-full placeholder-slate-600 font-semibold text-slate-800" />
                 </div>
@@ -591,11 +688,22 @@ export const DisputeWizard: React.FC = () => {
 
           {/* Navigation Controls */}
           <div className="flex justify-between pt-6 border-t border-slate-200">
-            <Button variant="outline" size="sm" onClick={handleBack} disabled={step === 1}>Back</Button>
+            <Button variant="outline" size="sm" onClick={handleBack} disabled={step === 1 || isSubmitting}>Back</Button>
             {step < 5 ? (
               <Button variant="primary" size="sm" onClick={handleStepNext}>Next</Button>
             ) : (
-              <Button variant="secondary" size="sm" onClick={handleSubmit} className="gap-1.5"><Lock className="w-3.5 h-3.5" /> Submit Case</Button>
+              <Button variant="secondary" size="sm" onClick={handleSubmit} disabled={isSubmitting} className="gap-1.5">
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-3.5 h-3.5" /> Submit Case
+                  </>
+                )}
+              </Button>
             )}
           </div>
         </Card>
@@ -609,7 +717,7 @@ export const DisputeWizard: React.FC = () => {
 // ==========================================
 
 export const DisputeTracking: React.FC = () => {
-  const { disputes, activeDisputeId, setActiveDisputeId, setCurrentPage } = useDisputes();
+  const { disputes, activeDisputeId, setActiveDisputeId, setCurrentPage, isLoadingData, fetchError, refetchAllData } = useDisputes();
   const dispute = disputes.find(d => d.id === activeDisputeId) || disputes[0];
 
   const stages = [
@@ -621,6 +729,21 @@ export const DisputeTracking: React.FC = () => {
   ];
 
   const currentStageIndex = dispute ? (['Rejected', 'Resolved'].includes(dispute.status) ? 4 : dispute.status === 'AI Ready' ? 3 : dispute.status === 'Merchant Response' ? 2 : 1) : 0;
+
+  if (isLoadingData) return <TimelineSkeleton />;
+  if (fetchError) return <div className="py-12"><ErrorCard message={fetchError} onRetry={refetchAllData} /></div>;
+  if (disputes.length === 0) {
+    return (
+      <div className="py-12">
+        <EmptyState 
+          title="No disputes submitted yet" 
+          description="You do not have any open or resolved dispute claims at this time." 
+          actionLabel="View Transactions"
+          onAction={() => setCurrentPage('transactions')}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 text-left">
@@ -698,15 +821,15 @@ export const DisputeTracking: React.FC = () => {
               )}
             </Card>
 
-            {/* Resolve AI Reviewing Status Checkbox Panel */}
-            {(['Submitted', 'AI Investigating', 'AI Ready', 'Manual Review'].includes(dispute.status)) && (
-              <Card className="p-5 space-y-4">
+            {/* Resolve AI Reviewing Status Card */}
+            {(['Submitted', 'AI Investigating'].includes(dispute.status)) ? (
+              <AIInvestigationCard dispute={dispute} />
+            ) : (['AI Ready', 'Manual Review'].includes(dispute.status)) ? (
+              <Card className="p-5 space-y-4 bg-white border-slate-200">
                 <div className="flex items-center gap-3">
-                  <ShieldCheck className="w-5 h-5 text-[#016FD0] animate-pulse" />
+                  <ShieldCheck className="w-5 h-5 text-[#10B981] animate-pulse" />
                   <p className="font-extrabold text-xs text-[#00133a]">
-                    {dispute.status === 'AI Ready' 
-                      ? 'Initial review complete. Your case is ready for review.' 
-                      : 'Resolve AI is reviewing your dispute...'}
+                    Initial review complete. Your case is ready for final review.
                   </p>
                 </div>
                 
@@ -719,24 +842,24 @@ export const DisputeTracking: React.FC = () => {
                   
                   {/* Item 2: Transaction reviewed */}
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className={`w-4 h-4 ${['AI Investigating', 'AI Ready', 'Manual Review', 'Resolved', 'Rejected', 'Under Review'].includes(dispute.status) ? 'text-[#10B981]' : 'text-slate-350'}`} />
-                    <span className={`font-semibold ${['AI Investigating', 'AI Ready', 'Manual Review', 'Resolved', 'Rejected', 'Under Review'].includes(dispute.status) ? 'text-slate-800' : 'text-slate-400'}`}>Transaction reviewed</span>
+                    <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
+                    <span className="text-slate-800 font-semibold">Transaction reviewed</span>
                   </div>
                   
                   {/* Item 3: Case classified */}
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className={`w-4 h-4 ${['AI Ready', 'Manual Review', 'Resolved', 'Rejected', 'Under Review'].includes(dispute.status) ? 'text-[#10B981]' : 'text-slate-350'}`} />
-                    <span className={`font-semibold ${['AI Ready', 'Manual Review', 'Resolved', 'Rejected', 'Under Review'].includes(dispute.status) ? 'text-slate-800' : 'text-slate-400'}`}>Case classified</span>
+                    <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
+                    <span className="text-slate-800 font-semibold">Case classified</span>
                   </div>
                   
                   {/* Item 4: Initial investigation completed */}
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className={`w-4 h-4 ${['AI Ready', 'Manual Review', 'Resolved', 'Rejected', 'Under Review'].includes(dispute.status) ? 'text-[#10B981]' : 'text-slate-350'}`} />
-                    <span className={`font-semibold ${['AI Ready', 'Manual Review', 'Resolved', 'Rejected', 'Under Review'].includes(dispute.status) ? 'text-slate-800' : 'text-slate-400'}`}>Initial investigation completed</span>
+                    <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
+                    <span className="text-slate-800 font-semibold">Initial investigation completed</span>
                   </div>
                 </div>
               </Card>
-            )}
+            ) : null}
 
             {/* Merchant Countdown alerts */}
             {dispute.status === 'Merchant Response' && (
@@ -793,13 +916,14 @@ export const DisputeTracking: React.FC = () => {
 // ==========================================
 
 export const InvestigatorDashboard: React.FC = () => {
-  const { disputes, investigatorFilter: filter, setInvestigatorFilter: setFilter, setActiveDisputeId, setCurrentPage } = useDisputes();
+  const { disputes, investigatorFilter: filter, setInvestigatorFilter: setFilter, setActiveDisputeId, setCurrentPage, isLoadingData, fetchError, refetchAllData } = useDisputes();
   const [metrics, setMetrics] = useState({ openCases: 0, highPriority: 0, aiReady: 0, underReview: 0 });
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('Newest');
 
   // Fetch SQLite Metrics dynamically from backend
   useEffect(() => {
+    if (isLoadingData) return;
     fetch('http://127.0.0.1:4000/api/investigator/metrics', {
       headers: {
         'X-User-Role': 'investigator',
@@ -813,7 +937,10 @@ export const InvestigatorDashboard: React.FC = () => {
         }
       })
       .catch(err => console.error('[Metrics API Error]:', err));
-  }, [disputes]);
+  }, [disputes, isLoadingData]);
+
+  if (isLoadingData) return <DashboardSkeleton />;
+  if (fetchError) return <div className="py-12"><ErrorCard message={fetchError} onRetry={refetchAllData} /></div>;
 
   const queue = disputes.filter(dispute => {
     // 1. Filter tabs/sidebar selection
@@ -957,7 +1084,13 @@ export const InvestigatorDashboard: React.FC = () => {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={8} className="px-5 py-8 text-center text-slate-500 font-semibold">No cases in this queue.</td>
+                  <td colSpan={8} className="py-12 bg-white">
+                    <EmptyState 
+                      icon={<BriefcaseBusiness className="w-6 h-6 text-slate-400" />}
+                      title="No investigations available" 
+                      description="All cases in this queue are resolved. Great job!" 
+                    />
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -973,7 +1106,7 @@ export const InvestigatorDashboard: React.FC = () => {
 // ==========================================
 
 export const InvestigationWorkspace: React.FC = () => {
-  const { disputes, activeDisputeId, investigatorAction, setCurrentPage, showToast } = useDisputes();
+  const { disputes, activeDisputeId, investigatorAction, setCurrentPage, showToast, isLoadingData, fetchError, refetchAllData } = useDisputes();
   const dispute = disputes.find(d => d.id === activeDisputeId) || disputes[0];
 
   const [showConfirmApprove, setShowConfirmApprove] = useState(false);
@@ -986,20 +1119,29 @@ export const InvestigationWorkspace: React.FC = () => {
   const [overrideReason, setOverrideReason] = useState('');
   const [overrideTargetAction, setOverrideTargetAction] = useState('APPROVE');
   const [selectedFileFact, setSelectedFileFact] = useState<any>(null);
+  const [isActionPending, setIsActionPending] = useState(false);
 
   // Transition case automatically from AI_READY to UNDER_REVIEW on workspace load
   useEffect(() => {
-    if (dispute && dispute.status === 'AI Ready') {
+    if (dispute && dispute.status === 'AI Ready' && !isLoadingData) {
       investigatorAction(dispute.id, 'start-review');
     }
-  }, [dispute?.id, dispute?.status]);
+  }, [dispute?.id, dispute?.status, isLoadingData]);
+
+  if (isLoadingData) return <WorkspaceSkeleton />;
+  if (fetchError) return <div className="py-12"><ErrorCard message={fetchError} onRetry={refetchAllData} /></div>;
 
   if (!dispute) {
     return (
-      <Card className="py-12 text-center max-w-sm mx-auto">
-        <p className="text-sm font-bold text-slate-700">No case selected.</p>
-        <Button className="mt-4" onClick={() => setCurrentPage('investigator')}>Back to Queue</Button>
-      </Card>
+      <div className="py-12">
+        <EmptyState 
+          icon={<BriefcaseBusiness className="w-6 h-6 text-slate-400" />}
+          title="No case selected" 
+          description="Please select an active claim case from the queue dashboard." 
+          actionLabel="Back to Queue"
+          onAction={() => setCurrentPage('investigator')}
+        />
+      </div>
     );
   }
 
@@ -1143,11 +1285,12 @@ export const InvestigationWorkspace: React.FC = () => {
             </div>
           </Card>
 
-          {/* Actor Color-Coded Audit Timeline */}
           <Card className="p-5">
             <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide mb-4">Audit Trail</h3>
             <div className="relative border-l-2 border-slate-200 ml-2 pl-4 space-y-4 max-h-[350px] overflow-y-auto text-xs font-semibold">
-              {(dispute.auditTrail || []).map(item => {
+              {!dispute.auditTrail || dispute.auditTrail.length === 0 ? (
+                <p className="text-slate-500 font-medium italic">No audit events available.</p>
+              ) : dispute.auditTrail.map(item => {
                 let actorStyle = 'bg-slate-100 text-slate-800 border-slate-200';
                 if (item.actorType === 'CUSTOMER') {
                   actorStyle = 'bg-blue-50 text-blue-800 border-blue-200';
@@ -1195,11 +1338,21 @@ export const InvestigationWorkspace: React.FC = () => {
               <p><b>Recommended Action:</b> {cleanLabel(investigation?.recommendedAction)}</p>
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              <Button variant="outline" size="sm" onClick={() => setShowConfirmApprove(false)}>Cancel</Button>
+              <Button variant="outline" size="sm" onClick={() => setShowConfirmApprove(false)} disabled={isActionPending}>Cancel</Button>
               <Button variant="primary" size="sm" onClick={async () => {
-                await investigatorAction(dispute.id, 'approve');
-                setShowConfirmApprove(false);
-              }}>Confirm</Button>
+                setIsActionPending(true);
+                try {
+                  await investigatorAction(dispute.id, 'approve');
+                  showToast('Recommendation approved successfully.', 'success');
+                  setShowConfirmApprove(false);
+                } catch (err: any) {
+                  showToast(err.message || 'Failed to approve recommendation.', 'error');
+                } finally {
+                  setIsActionPending(false);
+                }
+              }} disabled={isActionPending}>
+                {isActionPending ? 'Approving...' : 'Confirm'}
+              </Button>
             </div>
           </Card>
         </div>
@@ -1220,16 +1373,26 @@ export const InvestigationWorkspace: React.FC = () => {
               placeholder="E.g. Cancellation confirmation email from merchant showing refund agreement..."
             />
             <div className="flex justify-end gap-3 pt-2">
-              <Button variant="outline" size="sm" onClick={() => setShowConfirmRequest(false)}>Cancel</Button>
+              <Button variant="outline" size="sm" onClick={() => setShowConfirmRequest(false)} disabled={isActionPending}>Cancel</Button>
               <Button variant="primary" size="sm" onClick={async () => {
                 if (!requestReason.trim()) {
                   showToast('Please specify what information or proof is required from the customer.', 'error');
                   return;
                 }
-                await investigatorAction(dispute.id, 'request-info', requestReason);
-                setShowConfirmRequest(false);
-                setRequestReason('');
-              }}>Confirm</Button>
+                setIsActionPending(true);
+                try {
+                  await investigatorAction(dispute.id, 'request-info', requestReason);
+                  showToast('Information requested successfully.', 'success');
+                  setShowConfirmRequest(false);
+                  setRequestReason('');
+                } catch (err: any) {
+                  showToast(err.message || 'Failed to request information.', 'error');
+                } finally {
+                  setIsActionPending(false);
+                }
+              }} disabled={isActionPending}>
+                {isActionPending ? 'Sending...' : 'Confirm'}
+              </Button>
             </div>
           </Card>
         </div>
@@ -1250,16 +1413,26 @@ export const InvestigationWorkspace: React.FC = () => {
               placeholder="E.g. Large dollar claim with conflicting merchant records..."
             />
             <div className="flex justify-end gap-3 pt-2">
-              <Button variant="outline" size="sm" onClick={() => setShowConfirmEscalate(false)}>Cancel</Button>
+              <Button variant="outline" size="sm" onClick={() => setShowConfirmEscalate(false)} disabled={isActionPending}>Cancel</Button>
               <Button variant="danger" size="sm" onClick={async () => {
                 if (!escalateReason.trim()) {
                   showToast('Please specify an escalation reason.', 'error');
                   return;
                 }
-                await investigatorAction(dispute.id, 'escalate', escalateReason);
-                setShowConfirmEscalate(false);
-                setEscalateReason('');
-              }}>Confirm</Button>
+                setIsActionPending(true);
+                try {
+                  await investigatorAction(dispute.id, 'escalate', escalateReason);
+                  showToast('Case escalated successfully.', 'success');
+                  setShowConfirmEscalate(false);
+                  setEscalateReason('');
+                } catch (err: any) {
+                  showToast(err.message || 'Failed to escalate case.', 'error');
+                } finally {
+                  setIsActionPending(false);
+                }
+              }} disabled={isActionPending}>
+                {isActionPending ? 'Escalating...' : 'Confirm'}
+              </Button>
             </div>
           </Card>
         </div>
@@ -1302,16 +1475,26 @@ export const InvestigationWorkspace: React.FC = () => {
             </div>
 
             <div className="flex justify-end gap-3 pt-2">
-              <Button variant="outline" size="sm" onClick={() => setShowConfirmOverride(false)}>Cancel</Button>
+              <Button variant="outline" size="sm" onClick={() => setShowConfirmOverride(false)} disabled={isActionPending}>Cancel</Button>
               <Button variant="secondary" size="sm" onClick={async () => {
                 if (!overrideReason.trim()) {
                   showToast('Override reason is required.', 'error');
                   return;
                 }
-                await investigatorAction(dispute.id, 'override', overrideReason, overrideTargetAction);
-                setShowConfirmOverride(false);
-                setOverrideReason('');
-              }}>Confirm</Button>
+                setIsActionPending(true);
+                try {
+                  await investigatorAction(dispute.id, 'override', overrideReason, overrideTargetAction);
+                  showToast('Recommendation overridden successfully.', 'success');
+                  setShowConfirmOverride(false);
+                  setOverrideReason('');
+                } catch (err: any) {
+                  showToast(err.message || 'Failed to override recommendation.', 'error');
+                } finally {
+                  setIsActionPending(false);
+                }
+              }} disabled={isActionPending}>
+                {isActionPending ? 'Overriding...' : 'Confirm'}
+              </Button>
             </div>
           </Card>
         </div>
@@ -1394,6 +1577,7 @@ export const Appeal: React.FC = () => {
 
   const [notes, setNotes] = useState('');
   const [files, setFiles] = useState<{ name: string; size: string }[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!dispute) {
     return (
@@ -1419,12 +1603,15 @@ export const Appeal: React.FC = () => {
       showToast('Please provide a detailed explanation of your appeal (minimum 15 characters).', 'error');
       return;
     }
+    setIsSubmitting(true);
     try {
       await submitAppeal(dispute.id, notes, files);
       showToast('Appeal filed successfully for review.', 'success');
       setCurrentPage('my-disputes');
     } catch (err: any) {
       showToast(err.message || 'Failed to submit appeal.', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1466,8 +1653,19 @@ export const Appeal: React.FC = () => {
           </div>
 
           <div className="flex justify-end gap-3.5 pt-4 border-t border-slate-200">
-            <Button type="button" variant="outline" onClick={() => setCurrentPage('my-disputes')}>Cancel</Button>
-            <Button type="submit" variant="secondary" className="gap-1.5"><Lock className="w-3.5 h-3.5" /> Submit Appeal File</Button>
+            <Button type="button" variant="outline" onClick={() => setCurrentPage('my-disputes')} disabled={isSubmitting}>Cancel</Button>
+            <Button type="submit" variant="secondary" disabled={isSubmitting} className="gap-1.5">
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Filing Appeal...
+                </>
+              ) : (
+                <>
+                  <Lock className="w-3.5 h-3.5" /> Submit Appeal File
+                </>
+              )}
+            </Button>
           </div>
         </form>
       </Card>
@@ -1481,8 +1679,10 @@ export const Appeal: React.FC = () => {
 
 export const Settings: React.FC = () => {
   const { logout, customerName, showToast } = useDisputes();
+  const [isResetting, setIsResetting] = useState(false);
   const handleReset = async () => {
     if (confirm("Reset simulation database to initial starting states? This will sign you out and reload fresh data.")) {
+      setIsResetting(true);
       try {
         const res = await fetch('http://127.0.0.1:4000/api/admin/reset', {
           method: 'POST'
@@ -1496,6 +1696,8 @@ export const Settings: React.FC = () => {
         }
       } catch (e: any) {
         showToast('Error connecting to reset API: ' + e.message, 'error');
+      } finally {
+        setIsResetting(false);
       }
     }
   };
@@ -1532,8 +1734,17 @@ export const Settings: React.FC = () => {
           <Card className="p-5 border border-amber-500/20 bg-amber-500/[0.02] space-y-4">
             <h4 className="text-sm font-bold text-slate-950 flex items-center gap-2"><Database className="w-4.5 h-4.5 text-amber-500" /> Hackathon Demo Admin Console</h4>
             <p className="text-slate-500 leading-relaxed font-medium">Restore original database charges and flags to re-run dispute demonstration flows for judges.</p>
-            <Button variant="outline" onClick={handleReset} className="text-xs font-bold gap-1.5 text-amber-300 border-amber-500/20 hover:bg-amber-500/10 cursor-pointer">
-              <RotateCcw className="w-3.5 h-3.5" /> Reset Simulation Data
+            <Button variant="outline" onClick={handleReset} disabled={isResetting} className="text-xs font-bold gap-1.5 text-amber-600 border-amber-500/20 hover:bg-amber-500/10 cursor-pointer">
+              {isResetting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                  Resetting...
+                </>
+              ) : (
+                <>
+                  <RotateCcw className="w-3.5 h-3.5" /> Reset Simulation Data
+                </>
+              )}
             </Button>
           </Card>
         </div>

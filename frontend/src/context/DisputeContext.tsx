@@ -78,6 +78,9 @@ interface DisputeContextType {
   setCustomerName: (name: string) => void;
   toast: { message: string; type: 'success' | 'error' | 'warning' } | null;
   showToast: (message: string | null, type?: 'success' | 'error' | 'warning') => void;
+  isLoadingData: boolean;
+  fetchError: string | null;
+  refetchAllData: () => Promise<void>;
 }
 
 const DisputeContext = createContext<DisputeContextType | undefined>(undefined);
@@ -114,6 +117,8 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [currentRole, setCurrentRole] = useState<string>('cardmember');
   const [investigatorFilter, setInvestigatorFilter] = useState<string>('All');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' } | null>(null);
+  const [isLoadingData, setIsLoadingData] = useState<boolean>(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const showToast = (message: string | null, type: 'success' | 'error' | 'warning' = 'error') => {
     if (message === null) {
@@ -132,6 +137,10 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, [toast]);
 
+  const refetchAllData = async () => {
+    await fetchAllData(currentRole, customerId);
+  };
+
   // Load backend data helper
   const [customerId, setCustomerId] = useState<string>(() => {
     const saved = localStorage.getItem('amex-resolve-customer-id');
@@ -143,7 +152,11 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
   });
 
   // Load backend data helper
-  const fetchAllData = async (role = 'cardmember', activeCustomerId = customerId) => {
+  const fetchAllData = async (role = 'cardmember', activeCustomerId = customerId, isBackground = false) => {
+    if (!isBackground) {
+      setIsLoadingData(true);
+    }
+    setFetchError(null);
     try {
       const customerId = activeCustomerId;
       
@@ -154,6 +167,7 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
           'X-Customer-Id': customerId
         }
       });
+      if (!txRes.ok) throw new Error(`HTTP error ${txRes.status}`);
       const txData = await txRes.json();
       if (txData.ok) {
         setTransactions(txData.transactions);
@@ -170,6 +184,7 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
           'X-Customer-Id': customerId
         }
       });
+      if (!dispRes.ok) throw new Error(`HTTP error ${dispRes.status}`);
       const dispData = await dispRes.json();
 
       if (dispData.ok) {
@@ -180,41 +195,46 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
               ? `${BACKEND_URL}/api/investigator/cases/${c.caseId}/investigation`
               : `${BACKEND_URL}/api/customer/cases/${c.caseId}`;
 
-            const detailRes = await fetch(detailUrl, {
-              headers: {
-                'X-User-Role': role,
-                'X-Customer-Id': customerId
-              }
-            });
-            const detailData = await detailRes.json();
+            try {
+              const detailRes = await fetch(detailUrl, {
+                headers: {
+                  'X-User-Role': role,
+                  'X-Customer-Id': customerId
+                }
+              });
+              if (!detailRes.ok) return null;
+              const detailData = await detailRes.json();
 
-            if (detailData.ok) {
-              const det = detailData.case;
-              return {
-                id: det.disputeId,
-                transaction: {
-                  id: det.transactionId || 'TX-1000',
-                  merchant: det.merchant,
-                  amount: det.amount,
-                  date: det.transactionDate || det.submittedAt,
-                  category: 'Retail',
-                  status: 'Disputed',
-                  disputeEligible: false,
-                  disputeId: det.disputeId
-                },
-                reason: det.reason,
-                mappedCode: det.mappedCode || '4554',
-                status: mapBackendStatusToFrontend(det.status),
-                submittedAt: det.submittedAt,
-                expectedResolution: det.expectedResolution,
-                questionnaire: det.questionnaire,
-                completenessScore: det.completenessScore,
-                decisionExplanation: det.decisionExplanation,
-                customerName: det.customerName || 'David K.',
-                evidenceFiles: det.evidenceFiles || [],
-                investigation: det.investigation,
-                auditTrail: det.auditTrail
-              } as Dispute;
+              if (detailData.ok) {
+                const det = detailData.case;
+                return {
+                  id: det.disputeId,
+                  transaction: {
+                    id: det.transactionId || 'TX-1000',
+                    merchant: det.merchant,
+                    amount: det.amount,
+                    date: det.transactionDate || det.submittedAt,
+                    category: 'Retail',
+                    status: 'Disputed',
+                    disputeEligible: false,
+                    disputeId: det.disputeId
+                  },
+                  reason: det.reason,
+                  mappedCode: det.mappedCode || '4554',
+                  status: mapBackendStatusToFrontend(det.status),
+                  submittedAt: det.submittedAt,
+                  expectedResolution: det.expectedResolution,
+                  questionnaire: det.questionnaire,
+                  completenessScore: det.completenessScore,
+                  decisionExplanation: det.decisionExplanation,
+                  customerName: det.customerName || 'David K.',
+                  evidenceFiles: det.evidenceFiles || [],
+                  investigation: det.investigation,
+                  auditTrail: det.auditTrail
+                } as Dispute;
+              }
+            } catch (detailErr) {
+              console.error(`[DisputeContext] Failed to load details for case ${c.caseId}`, detailErr);
             }
             return null;
           })
@@ -250,16 +270,32 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
         });
         setNotifications(notifs);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('[DisputeContext] Error fetching database records:', err);
+      setFetchError(err.message || 'Unable to connect to server. Please verify backend is running.');
+    } finally {
+      if (!isBackground) {
+        setIsLoadingData(false);
+      }
     }
   };
 
   useEffect(() => {
     if (isAuthenticated) {
-      fetchAllData(currentRole);
+      fetchAllData(currentRole, customerId);
     }
-  }, [isAuthenticated, currentRole]);
+  }, [isAuthenticated, currentRole, customerId]);
+
+  // Background polling loop for active AI investigations
+  useEffect(() => {
+    const hasPendingAI = disputes.some(d => d.status === 'Submitted' || d.status === 'AI Investigating');
+    if (hasPendingAI && isAuthenticated) {
+      const interval = setInterval(() => {
+        fetchAllData(currentRole, customerId, true);
+      }, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [disputes, isAuthenticated, currentRole, customerId]);
 
   const handleSetCurrentPage = (page: string) => {
     setCurrentPage(page);
@@ -444,7 +480,10 @@ export const DisputeProvider: React.FC<{ children: ReactNode }> = ({ children })
         setCustomerId,
         setCustomerName,
         toast,
-        showToast
+        showToast,
+        isLoadingData,
+        fetchError,
+        refetchAllData
       }}
     >
       {children}

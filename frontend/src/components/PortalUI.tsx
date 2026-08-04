@@ -3,7 +3,7 @@ import { useDisputes, type DisputeFile } from '../context/DisputeContext';
 import { 
   LayoutDashboard, CreditCard, PlusCircle, History, Bell, Settings, 
   Menu, X, Upload, FileText, Trash2, Eye, CheckCircle2, Plus, LogOut, BriefcaseBusiness,
-  Cpu, AlertTriangle
+  Cpu, AlertTriangle, Info
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -21,6 +21,187 @@ export const Card: React.FC<{ hoverable?: boolean; premium?: boolean; children: 
   >
     {children}
   </div>
+);
+
+// --- SKELETON LOADERS ---
+
+export const Skeleton: React.FC<{ className?: string }> = ({ className = '' }) => (
+  <div className={`animate-skeleton rounded ${className}`} />
+);
+
+export const TableSkeleton: React.FC = () => (
+  <Card className="p-0 overflow-hidden border-slate-200 bg-white">
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead className="bg-slate-50 border-b border-slate-200">
+          <tr className="text-left font-extrabold text-slate-400 uppercase tracking-widest">
+            <th className="px-6 py-4"><Skeleton className="h-3.5 w-20" /></th>
+            <th className="px-6 py-4"><Skeleton className="h-3.5 w-16" /></th>
+            <th className="px-6 py-4 text-right"><Skeleton className="h-3.5 w-16 ml-auto" /></th>
+            <th className="px-6 py-4 text-center"><Skeleton className="h-3.5 w-16 mx-auto" /></th>
+            <th className="px-6 py-4 text-right"><Skeleton className="h-3.5 w-16 ml-auto" /></th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-200">
+          {[1, 2, 3, 4, 5].map(i => (
+            <tr key={i} className="bg-white">
+              <td className="px-6 py-4.5"><Skeleton className="h-4 w-32" /></td>
+              <td className="px-6 py-4.5"><Skeleton className="h-4 w-20" /></td>
+              <td className="px-6 py-4.5 text-right"><Skeleton className="h-4 w-16 ml-auto" /></td>
+              <td className="px-6 py-4.5 text-center"><Skeleton className="h-5 w-20 rounded-full mx-auto" /></td>
+              <td className="px-6 py-4.5 text-right"><Skeleton className="h-7 w-16 rounded-lg ml-auto" /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </Card>
+);
+
+export const CardSkeleton: React.FC = () => (
+  <Card className="space-y-4 bg-white">
+    <Skeleton className="h-4 w-1/3" />
+    <Skeleton className="h-8 w-1/2" />
+    <div className="space-y-2 pt-2">
+      <Skeleton className="h-3.5 w-full" />
+      <Skeleton className="h-3.5 w-full" />
+      <Skeleton className="h-3.5 w-3/4" />
+    </div>
+  </Card>
+);
+
+export const DashboardSkeleton: React.FC = () => (
+  <div className="space-y-6">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {[1, 2, 3, 4].map(i => (
+        <Card key={i} className="p-5 space-y-3 bg-white">
+          <Skeleton className="h-3.5 w-1/2" />
+          <Skeleton className="h-8 w-1/3" />
+        </Card>
+      ))}
+    </div>
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="lg:col-span-2">
+        <TableSkeleton />
+      </div>
+      <div className="space-y-4">
+        <CardSkeleton />
+        <CardSkeleton />
+      </div>
+    </div>
+  </div>
+);
+
+export const TimelineSkeleton: React.FC = () => (
+  <Card className="p-6 bg-white space-y-6">
+    <Skeleton className="h-4 w-1/4" />
+    <div className="border-l-2 border-slate-200 pl-5 space-y-6 ml-2 relative">
+      {[1, 2, 3, 4].map(i => (
+        <div key={i} className="relative space-y-2">
+          <span className="absolute -left-[29px] top-1 w-3.5 h-3.5 rounded-full bg-slate-200" />
+          <Skeleton className="h-4 w-1/4" />
+          <Skeleton className="h-3 w-3/4" />
+        </div>
+      ))}
+    </div>
+  </Card>
+);
+
+export const WorkspaceSkeleton: React.FC = () => (
+  <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+    <div className="xl:col-span-3 space-y-4">
+      <Card className="p-5 space-y-4 bg-white">
+        <Skeleton className="h-4 w-1/2" />
+        {[1, 2, 3, 4, 5].map(i => (
+          <div key={i} className="space-y-2 pt-2 border-t border-slate-100 first:border-0 first:pt-0">
+            <Skeleton className="h-2.5 w-1/3" />
+            <Skeleton className="h-3.5 w-3/4" />
+          </div>
+        ))}
+      </Card>
+    </div>
+    <div className="xl:col-span-6 space-y-4">
+      <Card className="p-5 space-y-4 bg-white">
+        <Skeleton className="h-4 w-1/3" />
+        <Skeleton className="h-20 w-full" />
+        <Skeleton className="h-32 w-full" />
+      </Card>
+    </div>
+    <div className="xl:col-span-3 space-y-4">
+      <Card className="p-5 space-y-4 bg-white">
+        <Skeleton className="h-4 w-1/2" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full" />
+      </Card>
+    </div>
+  </div>
+);
+
+// --- EMPTY & ERROR STATES ---
+
+interface EmptyStateProps {
+  icon?: React.ReactNode;
+  title: string;
+  description: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}
+
+export const EmptyState: React.FC<EmptyStateProps> = ({ 
+  icon, 
+  title, 
+  description, 
+  actionLabel, 
+  onAction 
+}) => (
+  <Card className="py-12 px-6 text-center max-w-lg mx-auto bg-white border border-slate-200/60 shadow-sm flex flex-col items-center justify-center space-y-4">
+    {icon ? (
+      <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center border border-slate-100 text-slate-400">
+        {icon}
+      </div>
+    ) : (
+      <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center border border-slate-100 text-slate-400">
+        <Info className="w-6 h-6" />
+      </div>
+    )}
+    <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">{title}</h3>
+    <p className="text-xs font-semibold text-slate-500 leading-relaxed max-w-xs">{description}</p>
+    {actionLabel && onAction && (
+      <Button variant="primary" size="sm" onClick={onAction} className="mt-2 font-bold uppercase tracking-wider text-[10px]">
+        {actionLabel}
+      </Button>
+    )}
+  </Card>
+);
+
+interface ErrorCardProps {
+  message: string;
+  onRetry?: () => void;
+}
+
+export const ErrorCard: React.FC<ErrorCardProps> = ({ message, onRetry }) => (
+  <Card className="p-6 bg-white border border-rose-200 shadow-[0_10px_20px_rgba(239,68,68,0.02)] space-y-4 max-w-md mx-auto text-left">
+    <div className="flex items-center gap-3">
+      <div className="w-8 h-8 rounded-full bg-rose-50 flex items-center justify-center text-[#EF4444] shrink-0 border border-rose-100">
+        <AlertTriangle className="w-4.5 h-4.5" />
+      </div>
+      <div>
+        <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Network Alert</h4>
+        <p className="text-[9px] font-bold text-slate-400">Unable to complete request</p>
+      </div>
+    </div>
+    <p className="text-xs font-semibold text-slate-650 leading-relaxed">
+      {message}
+    </p>
+    {onRetry && (
+      <div className="flex justify-end pt-2">
+        <Button variant="outline" size="sm" onClick={onRetry} className="gap-1.5 font-bold uppercase tracking-wider text-[10px]">
+          Retry Request
+        </Button>
+      </div>
+    )}
+  </Card>
 );
 
 export const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'outline' | 'danger' | 'ghost'; size?: 'sm' | 'md' | 'lg' }> = 
